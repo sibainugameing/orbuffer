@@ -88,6 +88,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Preparing aria2…");
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState<"all" | "active" | "waiting" | "paused" | "complete" | "error">("all");
+  const [selectedGid, setSelectedGid] = useState<string | null>(null);
+  const [selectedDownload, setSelectedDownload] = useState<Download | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({
     maxConcurrentDownloads: 3,
@@ -150,10 +153,53 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const activeCount = useMemo(
-    () => downloads.filter((download) => download.status === "active").length,
+  const filteredDownloads = useMemo(
+    () =>
+      downloads.filter((download) => {
+        if (filter === "all") return true;
+        return download.status === filter;
+      }),
+    [downloads, filter],
+  );
+
+  const stats = useMemo(
+    () => ({
+      active: downloads.filter((download) => download.status === "active").length,
+      waiting: downloads.filter((download) => download.status === "waiting").length,
+      paused: downloads.filter((download) => download.status === "paused").length,
+      complete: downloads.filter((download) => download.status === "complete").length,
+      error: downloads.filter((download) => download.status === "error").length,
+    }),
     [downloads],
   );
+
+  useEffect(() => {
+    if (!selectedGid) {
+      setSelectedDownload(null);
+      return;
+    }
+
+    const current = downloads.find((download) => download.gid === selectedGid);
+    if (current) {
+      setSelectedDownload(current);
+      return;
+    }
+
+    void call<Download>("aria2_status", { gid: selectedGid })
+      .then(setSelectedDownload)
+      .catch(() => setSelectedDownload(null));
+  }, [downloads, selectedGid]);
+
+  async function openDetails(gid: string) {
+    try {
+      setSelectedGid(gid);
+      setError("");
+      const detail = await call<Download>("aria2_status", { gid });
+      setSelectedDownload(detail);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
 
   async function startAria2() {
     try {
@@ -236,7 +282,7 @@ export default function App() {
         <section className="hero-card">
           <div>
             <div className="eyebrow">QUEUE</div>
-            <div className="hero-number">{activeCount}</div>
+            <div className="hero-number">{stats.active}</div>
             <p>active downloads</p>
           </div>
           <div className="hero-actions">
@@ -364,22 +410,47 @@ export default function App() {
             </button>
           </div>
 
+          <div className="stats-row">
+            <button className={`stat-pill ${filter === "active" ? "selected" : ""}`} onClick={() => setFilter(filter === "active" ? "all" : "active")}>
+              <strong>{stats.active}</strong> active
+            </button>
+            <button className={`stat-pill ${filter === "waiting" ? "selected" : ""}`} onClick={() => setFilter(filter === "waiting" ? "all" : "waiting")}>
+              <strong>{stats.waiting}</strong> waiting
+            </button>
+            <button className={`stat-pill ${filter === "paused" ? "selected" : ""}`} onClick={() => setFilter(filter === "paused" ? "all" : "paused")}>
+              <strong>{stats.paused}</strong> paused
+            </button>
+            <button className={`stat-pill ${filter === "complete" ? "selected" : ""}`} onClick={() => setFilter(filter === "complete" ? "all" : "complete")}>
+              <strong>{stats.complete}</strong> complete
+            </button>
+            <button className={`stat-pill ${filter === "error" ? "selected" : ""}`} onClick={() => setFilter(filter === "error" ? "all" : "error")}>
+              <strong>{stats.error}</strong> error
+            </button>
+          </div>
+
           {error && <div className="notice error">{error}</div>}
           {!error && message && <div className="notice">{message}</div>}
 
           {downloads.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-title">Nothing active</div>
+              <div className="empty-title">No downloads yet</div>
               <p>Add a URL above and aria2 will handle the transfer.</p>
+            </div>
+          ) : filteredDownloads.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-title">No matching downloads</div>
+              <p>Choose another status filter.</p>
             </div>
           ) : (
             <div className="download-list">
-              {downloads.map((download) => {
+              {filteredDownloads.map((download) => {
                 const percent = progress(download);
                 return (
                   <article className="download-card" key={download.gid}>
                     <div className="download-main">
-                      <div className="download-title">{filename(download)}</div>
+                      <button className="download-title-button" onClick={() => void openDetails(download.gid)} title="Open download details">
+                      <span className="download-title">{filename(download)}</span>
+                    </button>
                       <div className="download-meta">
                         <span>{statusLabel(download.status)}</span>
                         <span>{formatBytes(download.completedLength)} / {formatBytes(download.totalLength)}</span>
@@ -410,6 +481,60 @@ export default function App() {
                 );
               })}
             </div>
+          )}
+
+          {selectedDownload && (
+            <aside className="details-card">
+              <div className="section-heading">
+                <div>
+                  <div className="eyebrow">DETAILS</div>
+                  <h2>{filename(selectedDownload)}</h2>
+                </div>
+                <button className="text-button" onClick={() => setSelectedGid(null)}>
+                  Close
+                </button>
+              </div>
+
+              <div className="details-grid">
+                <div>
+                  <span>Status</span>
+                  <strong>{statusLabel(selectedDownload.status)}</strong>
+                </div>
+                <div>
+                  <span>Progress</span>
+                  <strong>{progress(selectedDownload).toFixed(1)}%</strong>
+                </div>
+                <div>
+                  <span>Downloaded</span>
+                  <strong>{formatBytes(selectedDownload.completedLength)} / {formatBytes(selectedDownload.totalLength)}</strong>
+                </div>
+                <div>
+                  <span>Download speed</span>
+                  <strong>{formatSpeed(selectedDownload.downloadSpeed)}</strong>
+                </div>
+                <div>
+                  <span>Connections</span>
+                  <strong>{selectedDownload.connections || "—"}</strong>
+                </div>
+                <div>
+                  <span>GID</span>
+                  <strong>{selectedDownload.gid}</strong>
+                </div>
+              </div>
+
+              {selectedDownload.files?.[0]?.path && (
+                <div className="detail-path">
+                  <span>Path</span>
+                  <code>{selectedDownload.files[0].path}</code>
+                </div>
+              )}
+
+              {selectedDownload.errorMessage && (
+                <div className="notice error">
+                  aria2 error {selectedDownload.errorCode || "unknown"}: {selectedDownload.errorMessage}
+                </div>
+              )}
+            </aside>
           )}
         </section>
       </main>
