@@ -64,4 +64,4 @@ jobs:
       - name: Test Tauri Rust package
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 
-      # A real commit on a v* verification branch lets connected automation trigger CI.
+      # Verification branch includes the required Tauri icon.
