@@ -24,7 +24,7 @@
 - [ ] Keep aria2 RPC bound to localhost by default.
 - [ ] Start and supervise the aria2 RPC process from the desktop application.
 - [ ] Define the download settings passed from the UI to aria2.
-- [ ] Configure aria2 segmented downloads and concurrent-download limits.
+- [x] Configure aria2 segmented downloads and concurrent-download limits.
 - [ ] Persist queue metadata and restore it after application restart.
 - [ ] Map aria2 states and errors to stable UI-facing states.
 - [ ] Verify completed downloads where size or integrity information is available.
