@@ -209,6 +209,37 @@ fn aria2_remove(state: State<'_, AppState>, gid: String) -> Result<String, Strin
 }
 
 #[tauri::command]
+fn aria2_clear_finished(state: State<'_, AppState>) -> Result<u64, String> {
+    let client = state
+        .client
+        .lock()
+        .map_err(|_| "failed to lock aria2 client state".to_string())?;
+
+    let stopped = client
+        .tell_stopped(0, 1000)
+        .map_err(|error| error.to_string())?;
+
+    let items = stopped
+        .as_array()
+        .ok_or_else(|| "aria2 returned a non-array stopped queue".to_string())?;
+
+    let mut removed = 0;
+    for item in items {
+        let status = item.get("status").and_then(Value::as_str);
+        if matches!(status, Some("complete" | "error" | "removed")) {
+            if let Some(gid) = item.get("gid").and_then(Value::as_str) {
+                client
+                    .remove_download_result(gid)
+                    .map_err(|error| error.to_string())?;
+                removed += 1;
+            }
+        }
+    }
+
+    Ok(removed)
+}
+
+#[tauri::command]
 fn aria2_global(state: State<'_, AppState>) -> Result<Value, String> {
     state
         .client
@@ -242,6 +273,7 @@ pub fn run() {
             aria2_pause,
             aria2_resume,
             aria2_remove,
+            aria2_clear_finished,
             aria2_global,
         ])
         .build(tauri::generate_context!())
