@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_rpc_port() {
-        let result = Aria2Process::start(68000, None, None);
+        let result = Aria2Process::start(0, None, None);
         assert!(matches!(
             result,
             Err(error) if error.kind() == std::io::ErrorKind::InvalidInput
