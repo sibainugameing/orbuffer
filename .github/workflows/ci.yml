@@ -1,4 +1,4 @@
-name: Rust CI
+name: CI
 
 on:
   push:
@@ -10,12 +10,23 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test on Ubuntu
+  build:
+    name: Build and test
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             build-essential             curl             wget             file             libxdo-dev             libssl-dev             libayatana-appindicator3-dev             librsvg2-dev
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
@@ -23,8 +34,20 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Run formatting check
-        run: cargo fmt --all -- --check
+      - name: Install frontend dependencies
+        run: npm install
 
-      - name: Run tests
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check root Rust formatting
+        run: cargo fmt --manifest-path Cargo.toml -- --check
+
+      - name: Test root Rust package
         run: cargo test --all-targets
+
+      - name: Check Tauri Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Test Tauri Rust package
+        run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
