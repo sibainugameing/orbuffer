@@ -1,7 +1,7 @@
 use std::{
     env,
     path::PathBuf,
-    process::{self, Command, ExitCode},
+    process::{Command, ExitCode},
 };
 
 use url::Url;
