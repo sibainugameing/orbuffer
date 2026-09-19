@@ -116,7 +116,9 @@ React + TypeScript
 
 The desktop prototype now starts a local aria2 RPC process when needed. aria2 session state is stored in the Tauri app-data directory as `aria2.session` and loaded on startup, so unfinished/error downloads can be restored across application restarts. aria2 writes that session file periodically and on shutdown.
 
-The Settings panel exposes aria2's concurrent-download limit, split count, per-server connection limit, and minimum split size. These values are saved locally by the frontend and applied when OrBuffer starts an aria2 session. citeturn235547search0turn144993search0
+The Settings panel exposes aria2's concurrent-download limit, split count, per-server connection limit, and minimum split size. These values are saved locally by the frontend and applied when OrBuffer starts an aria2 session.
+
+The Add Download form can also pass an optional save directory and filename to aria2. These fields are saved locally for convenience. citeturn235547search0turn144993search0
 
 The next major step is to add persistent application metadata and settings around this aria2-backed queue. Tauri's current documentation uses a top-level frontend project with a `src-tauri/` Rust project and documents invoking Rust commands from the frontend.
 
