@@ -243,6 +243,10 @@ impl Aria2Client {
         self.call_result_as_gid("aria2.remove", vec![json!(gid)])
     }
 
+    pub fn remove_download_result(&self, gid: &str) -> Result<String, Aria2RpcError> {
+        self.call_result_as_gid("aria2.removeDownloadResult", vec![json!(gid)])
+    }
+
     pub fn get_global_stat(&self) -> Result<Value, Aria2RpcError> {
         self.call("aria2.getGlobalStat", vec![])
     }
