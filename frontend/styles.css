@@ -205,6 +205,34 @@ button:disabled {
   margin-top: 18px;
 }
 
+.add-options {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.add-options label {
+  display: grid;
+  gap: 7px;
+  color: #8f9aa7;
+  font-size: 12px;
+}
+
+.add-options input {
+  width: 100%;
+  border: 1px solid #2a3540;
+  border-radius: 10px;
+  padding: 11px 12px;
+  color: #e8edf3;
+  background: #0c1116;
+}
+
+.add-options input:focus {
+  border-color: rgba(87, 217, 255, 0.68);
+  outline: none;
+}
+
 .add-form input {
   width: 100%;
   border: 1px solid #2a3540;
@@ -376,6 +404,11 @@ button:disabled {
   }
 
   .add-form {
+    grid-template-columns: 1fr;
+  }
+
+  .add-options {
+    grid-column: 1;
     grid-template-columns: 1fr;
   }
 }
