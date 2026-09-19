@@ -364,7 +364,8 @@ mod tests {
         let error = Aria2RpcError::InvalidResponse("test".to_string());
         assert_eq!(error.to_string(), "invalid aria2 RPC response: test");
     }
-}\n\n    fn spawn_mock_rpc(
+
+    fn spawn_mock_rpc(
         expected_method: &'static str,
         expected_params: Value,
         response: Value,
@@ -473,4 +474,5 @@ mod tests {
             error,
             Aria2RpcError::Rpc { code: 1, message } if message == "unauthorized"
         ));
-    }\n}
+    }
+}
