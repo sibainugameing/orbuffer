@@ -12,6 +12,7 @@ on:
       - "tsconfig.json"
       - "frontend/**"
       - "src-tauri/**"
+      - "vitest.config.ts"
   push:
     branches:
       - "v*"
@@ -55,6 +56,9 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      - name: Test frontend
+        run: npm test
 
       - name: Check root Rust formatting
         run: cargo fmt --manifest-path Cargo.toml -- --check
