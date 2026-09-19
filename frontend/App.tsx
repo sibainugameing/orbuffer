@@ -84,13 +84,13 @@ export default function App() {
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("aria2 is not started by OrBuffer yet.");
+  const [message, setMessage] = useState("Preparing aria2…");
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
     try {
       setError("");
-      const result = await call<Download[]>("aria2_active");
+      const result = await call<Download[]>("aria2_queue");
       setDownloads(result);
       setRunning(true);
     } catch (reason) {
@@ -100,7 +100,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const initialize = async () => {
+      try {
+        await call<boolean>("aria2_start", { port: 6800 });
+      } catch {
+        // An already-running aria2 instance is fine; refresh below will connect to it.
+      }
+      await refresh();
+    };
+
+    void initialize();
     const timer = window.setInterval(() => void refresh(), 1000);
     return () => window.clearInterval(timer);
   }, [refresh]);
@@ -173,8 +182,8 @@ export default function App() {
             <div className="hero-number">{activeCount}</div>
             <p>active downloads</p>
           </div>
-          <button className="secondary-button" onClick={() => void startAria2()} disabled={busy && !running}>
-            {running ? "Reconnect" : "Start aria2"}
+          <button className="secondary-button" onClick={() => void startAria2()} disabled={busy}>
+            {running ? "Restart / reconnect" : "Start aria2"}
           </button>
         </section>
 
@@ -242,13 +251,15 @@ export default function App() {
                     <div className="download-footer">
                       <span>{percent.toFixed(1)}%</span>
                       <div className="actions">
-                        {download.status === "active" && (
+                        {(download.status === "active" || download.status === "waiting") && (
                           <button onClick={() => void control(download.gid, "aria2_pause")}>Pause</button>
                         )}
                         {download.status === "paused" && (
                           <button onClick={() => void control(download.gid, "aria2_resume")}>Resume</button>
                         )}
-                        <button onClick={() => void control(download.gid, "aria2_remove")}>Remove</button>
+                        {download.status !== "complete" && download.status !== "removed" && (
+                          <button onClick={() => void control(download.gid, "aria2_remove")}>Remove</button>
+                        )}
                       </div>
                     </div>
                   </article>
