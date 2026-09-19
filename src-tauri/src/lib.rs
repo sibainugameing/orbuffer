@@ -35,8 +35,17 @@ fn aria2_start(
     state: State<'_, AppState>,
     port: Option<u16>,
     directory: Option<String>,
+    max_concurrent_downloads: Option<u32>,
+    split: Option<u32>,
+    max_connection_per_server: Option<u32>,
+    min_split_size: Option<String>,
 ) -> Result<bool, String> {
     let port = port.unwrap_or(DEFAULT_PORT);
+    let max_concurrent_downloads = max_concurrent_downloads.unwrap_or(3);
+    let split = split.unwrap_or(4);
+    let max_connection_per_server = max_connection_per_server.unwrap_or(4);
+    let min_split_size = min_split_size.unwrap_or_else(|| "20M".to_string());
+
     let secret = std::env::var("ORBUFFER_ARIA2_SECRET")
         .ok()
         .filter(|value| !value.is_empty());
@@ -82,6 +91,10 @@ fn aria2_start(
         directory_path,
         Some(&session_file),
         true,
+        max_concurrent_downloads,
+        split,
+        max_connection_per_server,
+        &min_split_size,
     )
     .map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
