@@ -110,6 +110,8 @@ React + TypeScript
       network
 ```
 
-The next major step is to move the existing Rust prototype into the standard Tauri project layout and expose these RPC operations as Tauri commands. Tauri's current documentation uses a top-level frontend project with a `src-tauri/` Rust project and documents invoking Rust commands from the frontend.
+The desktop prototype now starts a local aria2 RPC process when needed. aria2 session state is stored in the Tauri app-data directory as `aria2.session` and loaded on startup, so unfinished/error downloads can be restored across application restarts. aria2 writes that session file periodically and on shutdown. citeturn235547search0turn144993search0
+
+The next major step is to add persistent application metadata and settings around this aria2-backed queue. Tauri's current documentation uses a top-level frontend project with a `src-tauri/` Rust project and documents invoking Rust commands from the frontend.
 
 See [TODO.md](TODO.md) for the roadmap.
