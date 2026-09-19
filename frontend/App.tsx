@@ -170,7 +170,7 @@ export default function App() {
         maxConnectionPerServer: settings.maxConnectionPerServer,
         minSplitSize: settings.minSplitSize,
       });
-      setMessage("aria2 RPC is running on localhost:6800.");
+      setMessage("Settings saved. They apply the next time OrBuffer starts aria2.");
       await refresh();
     } catch (reason) {
       setError(String(reason));
@@ -244,7 +244,7 @@ export default function App() {
               {showSettings ? "Hide settings" : "Settings"}
             </button>
             <button className="secondary-button" onClick={() => void startAria2()} disabled={busy}>
-              {running ? "Apply settings" : "Start aria2"}
+              {running ? "Save settings" : "Start aria2"}
             </button>
           </div>
         </section>
@@ -304,7 +304,7 @@ export default function App() {
             </div>
 
             <p className="settings-note">
-              Changes apply to newly started aria2 sessions. Existing downloads keep their current aria2 options.
+              Settings are stored locally. They apply to the next aria2 start; existing downloads keep their current options.
             </p>
           </section>
         )}
