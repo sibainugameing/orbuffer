@@ -4,6 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 
+use serde_json::Value;
 use url::Url;
 
 mod aria2;
@@ -20,16 +21,19 @@ fn main() -> ExitCode {
 
 fn run() -> Result<u8, Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
-    let input = args
-        .next()
-        .ok_or("usage: orbuffer <http-or-https-url> [output-file]")?;
-    let url = Url::parse(&input)?;
-    if !matches!(
-        url.scheme(),
-        "http" | "https" | "ftp" | "ftps" | "sftp" | "magnet"
-    ) {
-        return Err(format!("unsupported URL scheme: {}", url.scheme()).into());
+
+    match args.next().as_deref() {
+        Some("rpc") => run_rpc(args),
+        Some(input) => run_download(input, args),
+        None => Err(usage().into()),
     }
+}
+
+fn run_download(
+    input: &str,
+    mut args: impl Iterator<Item = String>,
+) -> Result<u8, Box<dyn std::error::Error>> {
+    let url = parse_supported_url(input)?;
 
     let output = args.next().map(PathBuf::from).unwrap_or_else(|| {
         let name = url
@@ -39,6 +43,7 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
             .unwrap_or("download.bin");
         PathBuf::from(name)
     });
+
     if args.next().is_some() {
         return Err("too many arguments; usage: orbuffer <url> [output-file]".into());
     }
@@ -78,4 +83,120 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
         })?;
 
     Ok(status.code().unwrap_or(1).clamp(0, 255) as u8)
+}
+
+fn run_rpc(mut args: impl Iterator<Item = String>) -> Result<u8, Box<dyn std::error::Error>> {
+    let command = args
+        .next()
+        .ok_or("missing RPC command; use `orbuffer rpc help`")?;
+
+    let endpoint =
+        env::var("ORBUFFER_ARIA2_RPC").unwrap_or_else(|_| "http://127.0.0.1:6800/jsonrpc".into());
+    let secret = env::var("ORBUFFER_ARIA2_SECRET")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let client = aria2::Aria2Client::new(&endpoint, secret)?;
+
+    let result = match command.as_str() {
+        "add" => {
+            let uri = args.next().ok_or("usage: orbuffer rpc add <url> [dir] [out]")?;
+            parse_supported_url(&uri)?;
+            let directory = args.next();
+            let output = args.next();
+            if args.next().is_some() {
+                return Err("too many arguments; usage: orbuffer rpc add <url> [dir] [out]".into());
+            }
+            Value::String(client.add_uri(&uri, directory.as_deref(), output.as_deref())?)
+        }
+        "active" => {
+            reject_extra_args(&mut args, "orbuffer rpc active")?;
+            client.tell_active()?
+        }
+        "waiting" => {
+            let offset = parse_i64(args.next(), 0, "offset")?;
+            let num = parse_i64(args.next(), 100, "num")?;
+            reject_extra_args(&mut args, "orbuffer rpc waiting [offset] [num]")?;
+            client.tell_waiting(offset, num)?
+        }
+        "stopped" => {
+            let offset = parse_i64(args.next(), 0, "offset")?;
+            let num = parse_i64(args.next(), 100, "num")?;
+            reject_extra_args(&mut args, "orbuffer rpc stopped [offset] [num]")?;
+            client.tell_stopped(offset, num)?
+        }
+        "status" => {
+            let gid = args.next().ok_or("usage: orbuffer rpc status <gid>")?;
+            reject_extra_args(&mut args, "orbuffer rpc status <gid>")?;
+            client.tell_status(&gid)?
+        }
+        "pause" => rpc_gid_command(args, "pause", |gid| client.pause(gid))?,
+        "resume" | "unpause" => rpc_gid_command(args, "resume", |gid| client.unpause(gid))?,
+        "remove" => rpc_gid_command(args, "remove", |gid| client.remove(gid))?,
+        "global" => {
+            reject_extra_args(&mut args, "orbuffer rpc global")?;
+            client.get_global_stat()?
+        }
+        "help" => {
+            println!("{}", rpc_usage());
+            return Ok(0);
+        }
+        other => return Err(format!("unknown RPC command: {other}\n\n{}", rpc_usage()).into()),
+    };
+
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(0)
+}
+
+fn rpc_gid_command(
+    mut args: impl Iterator<Item = String>,
+    name: &str,
+    action: impl FnOnce(&str) -> Result<String, aria2::Aria2RpcError>,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let gid = args
+        .next()
+        .ok_or_else(|| format!("usage: orbuffer rpc {name} <gid>"))?;
+    reject_extra_args(&mut args, &format!("orbuffer rpc {name} <gid>"))?;
+    Ok(Value::String(action(&gid)?))
+}
+
+fn reject_extra_args(
+    args: &mut impl Iterator<Item = String>,
+    usage: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if args.next().is_some() {
+        return Err(format!("too many arguments; usage: {usage}").into());
+    }
+    Ok(())
+}
+
+fn parse_i64(
+    value: Option<String>,
+    default: i64,
+    name: &str,
+) -> Result<i64, Box<dyn std::error::Error>> {
+    match value {
+        Some(value) => value
+            .parse::<i64>()
+            .map_err(|_| format!("invalid {name}: {value}").into()),
+        None => Ok(default),
+    }
+}
+
+fn parse_supported_url(input: &str) -> Result<Url, Box<dyn std::error::Error>> {
+    let url = Url::parse(input)?;
+    if !matches!(
+        url.scheme(),
+        "http" | "https" | "ftp" | "ftps" | "sftp" | "magnet"
+    ) {
+        return Err(format!("unsupported URL scheme: {}", url.scheme()).into());
+    }
+    Ok(url)
+}
+
+fn usage() -> &'static str {
+    "usage:\n  orbuffer <url> [output-file]\n  orbuffer rpc <command> [arguments]\n\nRun `orbuffer rpc help` for RPC commands."
+}
+
+fn rpc_usage() -> &'static str {
+    "usage:\n  orbuffer rpc add <url> [dir] [out]\n  orbuffer rpc active\n  orbuffer rpc waiting [offset] [num]\n  orbuffer rpc stopped [offset] [num]\n  orbuffer rpc status <gid>\n  orbuffer rpc pause <gid>\n  orbuffer rpc resume <gid>\n  orbuffer rpc remove <gid>\n  orbuffer rpc global\n\nEnvironment:\n  ORBUFFER_ARIA2_RPC     RPC endpoint (default: http://127.0.0.1:6800/jsonrpc)\n  ORBUFFER_ARIA2_SECRET  aria2 RPC secret, when configured"
 }
