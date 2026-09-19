@@ -1,8 +1,4 @@
-use std::{
-    path::Path,
-    process::{Child, Command, Stdio},
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
@@ -34,59 +30,6 @@ impl std::error::Error for Aria2RpcError {}
 impl From<reqwest::Error> for Aria2RpcError {
     fn from(error: reqwest::Error) -> Self {
         Self::Http(error)
-    }
-}
-
-pub struct Aria2Process {
-    child: Child,
-}
-
-impl Aria2Process {
-    pub fn start(
-        port: u16,
-        secret: Option<&str>,
-        directory: Option<&Path>,
-    ) -> Result<Self, std::io::Error> {
-        if !(1024..=65535).contains(&port) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "aria2 RPC port must be between 1024 and 65535",
-            ));
-        }
-
-        let mut command = Command::new("aria2c");
-        command
-            .arg("--enable-rpc=true")
-            .arg("--rpc-listen-all=false")
-            .arg(format!("--rpc-listen-port={port}"))
-            .arg("--continue=true")
-            .arg("--summary-interval=1")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-
-        if let Some(secret) = secret {
-            if !secret.is_empty() {
-                command.arg(format!("--rpc-secret={secret}"));
-            }
-        }
-
-        if let Some(directory) = directory {
-            command.arg("--dir").arg(directory);
-        }
-
-        let child = command.spawn()?;
-        Ok(Self { child })
-    }
-
-    pub fn is_running(&mut self) -> Result<bool, std::io::Error> {
-        Ok(self.child.try_wait()?.is_none())
-    }
-}
-
-impl Drop for Aria2Process {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 
@@ -263,15 +206,6 @@ impl Default for Aria2Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rejects_invalid_rpc_port() {
-        let result = Aria2Process::start(68000, None, None);
-        assert!(matches!(
-            result,
-            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput
-        ));
-    }
 
     #[test]
     fn localhost_endpoint_is_valid() {
