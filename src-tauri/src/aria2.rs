@@ -90,7 +90,9 @@ impl Aria2Process {
             .arg("--rpc-listen-all=false")
             .arg(format!("--rpc-listen-port={port}"))
             .arg("--continue=true")
-            .arg(format!("--max-concurrent-downloads={max_concurrent_downloads}"))
+            .arg(format!(
+                "--max-concurrent-downloads={max_concurrent_downloads}"
+            ))
             .arg(format!("--split={split}"))
             .arg(format!(
                 "--max-connection-per-server={max_connection_per_server}"
