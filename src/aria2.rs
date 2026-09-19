@@ -216,8 +216,8 @@ mod tests {
 
     #[test]
     fn rejects_non_http_endpoint() {
-        let error = Aria2Client::new("ftp://127.0.0.1:6800/jsonrpc", None).unwrap_err();
-        assert!(matches!(error, Aria2RpcError::InvalidEndpoint(_)));
+        let result = Aria2Client::new("ftp://127.0.0.1:6800/jsonrpc", None);
+        assert!(matches!(result, Err(Aria2RpcError::InvalidEndpoint(_))));
     }
 
     #[test]
