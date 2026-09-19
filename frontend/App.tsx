@@ -84,6 +84,7 @@ export default function App() {
   const [directory, setDirectory] = useState("");
   const [output, setOutput] = useState("");
   const [downloads, setDownloads] = useState<Download[]>([]);
+  const [globalSpeed, setGlobalSpeed] = useState("—");
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Preparing aria2…");
@@ -102,8 +103,12 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       setError("");
-      const result = await call<Download[]>("aria2_queue");
+      const [result, global] = await Promise.all([
+        call<Download[]>("aria2_queue"),
+        call<{ downloadSpeed: string }>("aria2_global"),
+      ]);
       setDownloads(result);
+      setGlobalSpeed(formatSpeed(global.downloadSpeed));
       setRunning(true);
     } catch (reason) {
       setRunning(false);
@@ -305,6 +310,11 @@ export default function App() {
             <div className="eyebrow">QUEUE</div>
             <div className="hero-number">{stats.active}</div>
             <p>active downloads</p>
+          </div>
+          <div className="hero-metric">
+            <div className="eyebrow">TOTAL SPEED</div>
+            <strong>{globalSpeed}</strong>
+            <p>aria2 download rate</p>
           </div>
           <div className="hero-actions">
             <button className="secondary-button" onClick={() => setShowSettings((value) => !value)}>
