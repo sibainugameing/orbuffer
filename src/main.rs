@@ -99,7 +99,9 @@ fn run_rpc(mut args: impl Iterator<Item = String>) -> Result<u8, Box<dyn std::er
 
     let result = match command.as_str() {
         "add" => {
-            let uri = args.next().ok_or("usage: orbuffer rpc add <url> [dir] [out]")?;
+            let uri = args
+                .next()
+                .ok_or("usage: orbuffer rpc add <url> [dir] [out]")?;
             parse_supported_url(&uri)?;
             let directory = args.next();
             let output = args.next();
