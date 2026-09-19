@@ -1,7 +1,7 @@
 use std::{sync::Mutex, thread::sleep, time::Duration};
 
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, Manager, RunEvent, State};
 use url::Url;
 
 mod aria2;
@@ -31,6 +31,7 @@ impl AppState {
 
 #[tauri::command]
 fn aria2_start(
+    app_handle: AppHandle,
     state: State<'_, AppState>,
     port: Option<u16>,
     directory: Option<String>,
@@ -54,19 +55,41 @@ fn aria2_start(
         }
     }
 
-    let directory_path = directory.as_deref().map(std::path::Path::new);
-    let child = aria2::Aria2Process::start(port, secret.as_deref(), directory_path)
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                "aria2c was not found. Install aria2 and ensure aria2c is on PATH.".to_string()
-            } else {
-                format!("failed to start aria2c: {error}")
-            }
-        })?;
-
     let endpoint = format!("http://127.0.0.1:{port}/jsonrpc");
-    let client = aria2::Aria2Client::new(&endpoint, secret)
+    let client = aria2::Aria2Client::new(&endpoint, secret.clone())
         .map_err(|error| error.to_string())?;
+
+    if client.get_global_stat().is_ok() {
+        *state
+            .client
+            .lock()
+            .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
+        return Ok(false);
+    }
+
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|error| format!("failed to create app data directory: {error}"))?;
+    let session_file = app_data_dir.join("aria2.session");
+
+    let directory_path = directory.as_deref().map(std::path::Path::new);
+    let child = aria2::Aria2Process::start(
+        port,
+        secret.as_deref(),
+        directory_path,
+        Some(&session_file),
+        true,
+    )
+    .map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "aria2c was not found. Install aria2 and ensure aria2c is on PATH.".to_string()
+        } else {
+            format!("failed to start aria2c: {error}")
+        }
+    })?;
 
     for _ in 0..40 {
         if client.get_global_stat().is_ok() {
@@ -208,6 +231,17 @@ pub fn run() {
             aria2_remove,
             aria2_global,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running OrBuffer");
+        .build(tauri::generate_context!())
+        .expect("error while building OrBuffer")
+        .run(|app, event| {
+            if matches!(event, RunEvent::Exit) {
+                let state = app.state::<AppState>();
+                if let Ok(client) = state.client.lock() {
+                    let _ = client.shutdown();
+                }
+                if let Ok(mut process) = state.process.lock() {
+                    process.take();
+                }
+            }
+        });
 }
