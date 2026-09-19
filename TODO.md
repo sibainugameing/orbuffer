@@ -34,9 +34,9 @@
 - [ ] Build the Graphite background and Cyan accent visual system.
 - [ ] Add polished transitions and responsive interaction states.
 - [ ] Implement Overview dashboard.
-- [ ] Implement Downloads queue and status filters.
+- [x] Implement Downloads queue and status filters.
 - [ ] Implement Add Download flow.
-- [ ] Implement a download Details panel.
+- [x] Implement a download Details panel.
 - [ ] Implement Settings, including default save location and aria2 behavior.
 - [ ] Implement Analytics for download activity and transfer statistics.
 - [ ] Add accessible labels, keyboard navigation, and empty/loading/error states.
