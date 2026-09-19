@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, thread::sleep, time::Duration};
 
 use serde_json::Value;
 use tauri::State;
@@ -64,17 +64,23 @@ fn aria2_start(
             }
         })?;
 
-    *process = Some(child);
-
     let endpoint = format!("http://127.0.0.1:{port}/jsonrpc");
     let client = aria2::Aria2Client::new(&endpoint, secret)
         .map_err(|error| error.to_string())?;
-    *state
-        .client
-        .lock()
-        .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
 
-    Ok(true)
+    for _ in 0..40 {
+        if client.get_global_stat().is_ok() {
+            *state
+                .client
+                .lock()
+                .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
+            *process = Some(child);
+            return Ok(true);
+        }
+        sleep(Duration::from_millis(50));
+    }
+
+    Err("aria2c started but its JSON-RPC endpoint did not become ready".to_string())
 }
 
 #[tauri::command]
@@ -101,6 +107,29 @@ fn aria2_active(state: State<'_, AppState>) -> Result<Value, String> {
         .map_err(|_| "failed to lock aria2 client state".to_string())?
         .tell_active()
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn aria2_queue(state: State<'_, AppState>) -> Result<Value, String> {
+    let client = state
+        .client
+        .lock()
+        .map_err(|_| "failed to lock aria2 client state".to_string())?;
+
+    let mut downloads = Vec::new();
+
+    for result in [
+        client.tell_active(),
+        client.tell_waiting(0, 1000),
+        client.tell_stopped(0, 1000),
+    ] {
+        match result.map_err(|error| error.to_string())? {
+            Value::Array(items) => downloads.extend(items),
+            _ => return Err("aria2 returned a non-array queue response".to_string()),
+        }
+    }
+
+    Ok(Value::Array(downloads))
 }
 
 #[tauri::command]
@@ -172,6 +201,7 @@ pub fn run() {
             aria2_start,
             aria2_add,
             aria2_active,
+            aria2_queue,
             aria2_status,
             aria2_pause,
             aria2_resume,
