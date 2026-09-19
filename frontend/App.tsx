@@ -183,7 +183,7 @@ export default function App() {
             <p>active downloads</p>
           </div>
           <button className="secondary-button" onClick={() => void startAria2()} disabled={busy}>
-            {running ? "Restart / reconnect" : "Start aria2"}
+            {running ? "Reconnect" : "Start aria2"}
           </button>
         </section>
 
