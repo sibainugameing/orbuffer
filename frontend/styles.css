@@ -286,6 +286,12 @@ button:disabled {
   margin-top: 34px;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .stats-row {
   display: flex;
   flex-wrap: wrap;
