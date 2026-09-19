@@ -13,6 +13,8 @@ on:
       - "frontend/**"
       - "src-tauri/**"
   push:
+    branches:
+      - "v*"
     tags:
       - "v*"
   workflow_dispatch:
