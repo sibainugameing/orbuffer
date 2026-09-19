@@ -48,11 +48,39 @@ impl Aria2Process {
         directory: Option<&Path>,
         session_file: Option<&Path>,
         load_session: bool,
+        max_concurrent_downloads: u32,
+        split: u32,
+        max_connection_per_server: u32,
+        min_split_size: &str,
     ) -> Result<Self, std::io::Error> {
         if !(1024..=65535).contains(&port) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "aria2 RPC port must be between 1024 and 65535",
+            ));
+        }
+        if !(1..=64).contains(&max_concurrent_downloads) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "max concurrent downloads must be between 1 and 64",
+            ));
+        }
+        if !(1..=32).contains(&split) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "split must be between 1 and 32",
+            ));
+        }
+        if !(1..=32).contains(&max_connection_per_server) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "max connections per server must be between 1 and 32",
+            ));
+        }
+        if min_split_size.trim().is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "min split size must not be empty",
             ));
         }
 
@@ -62,6 +90,12 @@ impl Aria2Process {
             .arg("--rpc-listen-all=false")
             .arg(format!("--rpc-listen-port={port}"))
             .arg("--continue=true")
+            .arg(format!("--max-concurrent-downloads={max_concurrent_downloads}"))
+            .arg(format!("--split={split}"))
+            .arg(format!(
+                "--max-connection-per-server={max_connection_per_server}"
+            ))
+            .arg(format!("--min-split-size={min_split_size}"))
             .arg("--summary-interval=1")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -290,7 +324,16 @@ mod tests {
 
     #[test]
     fn rejects_invalid_rpc_port() {
-        let result = Aria2Process::start(0, None, None, None, false);
+        let result = Aria2Process::start(0, None, None, None, false, 3, 4, 4, "20M");
+        assert!(matches!(
+            result,
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_download_settings() {
+        let result = Aria2Process::start(6800, None, None, None, false, 0, 4, 4, "20M");
         assert!(matches!(
             result,
             Err(error) if error.kind() == std::io::ErrorKind::InvalidInput
