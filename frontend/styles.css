@@ -286,6 +286,32 @@ button:disabled {
   margin-top: 34px;
 }
 
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.stat-pill {
+  border: 1px solid #29343e;
+  border-radius: 999px;
+  padding: 8px 11px;
+  color: #8f9aa7;
+  background: #11171e;
+  font-size: 12px;
+}
+
+.stat-pill strong {
+  color: #dce7ee;
+}
+
+.stat-pill.selected {
+  border-color: rgba(87, 217, 255, 0.62);
+  color: #dff8ff;
+  background: rgba(87, 217, 255, 0.08);
+}
+
 .download-list {
   display: grid;
   gap: 12px;
@@ -297,7 +323,21 @@ button:disabled {
   border-radius: 16px;
 }
 
+.download-title-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.download-title-button:hover .download-title {
+  color: #57d9ff;
+}
+
 .download-title {
+  display: block;
   overflow: hidden;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -366,6 +406,64 @@ button:disabled {
   color: #ffb4b4;
 }
 
+.details-card {
+  margin-top: 14px;
+  padding: 20px;
+  border: 1px solid #26313b;
+  border-radius: 16px;
+  background: #0e141a;
+}
+
+.details-card h2 {
+  max-width: 650px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.details-grid > div {
+  display: grid;
+  gap: 5px;
+}
+
+.details-grid span,
+.detail-path span {
+  color: #74818e;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.details-grid strong {
+  color: #dbe5ec;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.detail-path {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.detail-path code {
+  display: block;
+  overflow-x: auto;
+  padding: 10px;
+  border: 1px solid #202b34;
+  border-radius: 10px;
+  color: #abb7c2;
+  background: #0b1015;
+  font-size: 12px;
+}
+
 .empty-state {
   margin-top: 16px;
   padding: 48px 24px;
@@ -400,6 +498,10 @@ button:disabled {
   }
 
   .settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .details-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
