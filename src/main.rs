@@ -202,3 +202,24 @@ fn usage() -> &'static str {
 fn rpc_usage() -> &'static str {
     "usage:\n  orbuffer rpc add <url> [dir] [out]\n  orbuffer rpc active\n  orbuffer rpc waiting [offset] [num]\n  orbuffer rpc stopped [offset] [num]\n  orbuffer rpc status <gid>\n  orbuffer rpc pause <gid>\n  orbuffer rpc resume <gid>\n  orbuffer rpc remove <gid>\n  orbuffer rpc global\n\nEnvironment:\n  ORBUFFER_ARIA2_RPC     RPC endpoint (default: http://127.0.0.1:6800/jsonrpc)\n  ORBUFFER_ARIA2_SECRET  aria2 RPC secret, when configured"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_supported_http_url() {
+        assert!(parse_supported_url("https://example.com/file.zip").is_ok());
+    }
+
+    #[test]
+    fn accepts_magnet_url() {
+        assert!(parse_supported_url("magnet:?xt=urn:btih:test").is_ok());
+    }
+
+    #[test]
+    fn rejects_unsupported_url_scheme() {
+        let result = parse_supported_url("javascript:alert(1)");
+        assert!(result.is_err());
+    }
+}
