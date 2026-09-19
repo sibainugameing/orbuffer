@@ -10,7 +10,7 @@
 
 ## Phase 1 — Application foundation
 
-- [ ] Create the standard Tauri 2 + React + TypeScript project structure.
+- [x] Create the standard Tauri 2 + React + TypeScript project structure.
 - [ ] Establish Rust/TypeScript command and event contracts.
 - [ ] Add SQLite persistence and database migrations.
 - [ ] Add application logging and structured error reporting.
@@ -21,9 +21,9 @@
 - [x] Launch aria2 for direct downloads.
 - [x] Add an aria2 JSON-RPC client.
 - [x] Support add, status, active, waiting, stopped, pause, resume, remove, and global-stat RPC operations.
-- [ ] Keep aria2 RPC bound to localhost by default.
-- [ ] Start and supervise the aria2 RPC process from the desktop application.
-- [ ] Define the download settings passed from the UI to aria2.
+- [x] Keep aria2 RPC bound to localhost by default.
+- [x] Start and supervise the aria2 RPC process from the desktop application.
+- [x] Define the download settings passed from the UI to aria2.
 - [x] Configure aria2 segmented downloads and concurrent-download limits.
 - [x] Persist queue metadata and restore it after application restart.
 - [x] Map aria2 states and errors to stable UI-facing states.
@@ -31,15 +31,15 @@
 
 ## Phase 3 — Desktop GUI
 
-- [ ] Build the Graphite background and Cyan accent visual system.
+- [x] Build the Graphite background and Cyan accent visual system.
 - [ ] Add polished transitions and responsive interaction states.
-- [ ] Implement Overview dashboard.
+- [x] Implement Overview dashboard.
 - [x] Implement Downloads queue and status filters.
-- [ ] Implement Add Download flow.
+- [x] Implement Add Download flow.
 - [x] Implement a download Details panel.
-- [ ] Implement Settings, including default save location and aria2 behavior.
+- [x] Implement Settings, including default save location and aria2 behavior.
 - [ ] Implement Analytics for download activity and transfer statistics.
-- [ ] Add accessible labels, keyboard navigation, and empty/loading/error states.
+- [x] Add accessible labels, keyboard navigation, and empty/loading/error states.
 
 ## Phase 4 — Quality and release
 
