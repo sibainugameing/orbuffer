@@ -1,4 +1,9 @@
-use std::{env, path::PathBuf, process::{self, Command, ExitCode}};
+use std::{
+    env,
+    path::PathBuf,
+    process::{self, Command, ExitCode},
+};
+
 use url::Url;
 
 fn main() -> ExitCode {
@@ -13,14 +18,20 @@ fn main() -> ExitCode {
 
 fn run() -> Result<u8, Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
-    let input = args.next().ok_or("usage: orbuffer <http-or-https-url> [output-file]")?;
+    let input = args
+        .next()
+        .ok_or("usage: orbuffer <http-or-https-url> [output-file]")?;
     let url = Url::parse(&input)?;
-    if !matches!(url.scheme(), "http" | "https" | "ftp" | "ftps" | "sftp" | "magnet") {
+    if !matches!(
+        url.scheme(),
+        "http" | "https" | "ftp" | "ftps" | "sftp" | "magnet"
+    ) {
         return Err(format!("unsupported URL scheme: {}", url.scheme()).into());
     }
 
     let output = args.next().map(PathBuf::from).unwrap_or_else(|| {
-        let name = url.path_segments()
+        let name = url
+            .path_segments()
             .and_then(|mut parts| parts.next_back())
             .filter(|name| !name.is_empty())
             .unwrap_or("download.bin");
@@ -30,8 +41,13 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
         return Err("too many arguments; usage: orbuffer <url> [output-file]".into());
     }
 
-    let filename = output.file_name().ok_or("output path must include a filename")?;
-    let directory = output.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| std::path::Path::new("."));
+    let filename = output
+        .file_name()
+        .ok_or("output path must include a filename")?;
+    let directory = output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
 
     // aria2 owns transfer, resume, retries, segmented connections, and progress.
     // --continue=true reuses aria2's .aria2 control file when available.
