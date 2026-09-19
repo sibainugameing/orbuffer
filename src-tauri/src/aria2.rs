@@ -364,4 +364,115 @@ mod tests {
         let error = Aria2RpcError::InvalidResponse("test".to_string());
         assert_eq!(error.to_string(), "invalid aria2 RPC response: test");
     }
+
+    fn spawn_mock_rpc(
+        expected_method: &'static str,
+        expected_params: Value,
+        response: Value,
+    ) -> (Url, std::thread::JoinHandle<()>) {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            thread,
+        };
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            loop {
+                stream.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                if request.ends_with(b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            let headers = String::from_utf8(request).unwrap();
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().unwrap())
+                })
+                .unwrap();
+
+            let mut body = vec![0_u8; content_length];
+            stream.read_exact(&mut body).unwrap();
+            let request: Value = serde_json::from_slice(&body).unwrap();
+
+            assert_eq!(request.get("jsonrpc").and_then(Value::as_str), Some("2.0"));
+            assert_eq!(
+                request.get("method").and_then(Value::as_str),
+                Some(expected_method)
+            );
+            assert_eq!(request.get("params"), Some(&expected_params));
+
+            let body = serde_json::to_vec(&response).unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(&body).unwrap();
+        });
+
+        (
+            Url::parse(&format!("http://{address}/jsonrpc")).unwrap(),
+            handle,
+        )
+    }
+
+    #[test]
+    fn add_uri_sends_token_and_options_to_rpc() {
+        let (endpoint, handle) = spawn_mock_rpc(
+            "aria2.addUri",
+            json!([
+                "token:secret",
+                ["https://example.com/file.zip"],
+                {"dir": "/tmp/downloads", "out": "file.zip"}
+            ]),
+            json!({"jsonrpc": "2.0", "id": "1", "result": "gid-123"}),
+        );
+        let client =
+            Aria2Client::new(endpoint.as_str(), Some("secret".to_string())).unwrap();
+
+        let gid = client
+            .add_uri(
+                "https://example.com/file.zip",
+                Some("/tmp/downloads"),
+                Some("file.zip"),
+            )
+            .unwrap();
+
+        handle.join().unwrap();
+        assert_eq!(gid, "gid-123");
+    }
+
+    #[test]
+    fn rpc_error_is_mapped_to_aria2_error() {
+        let (endpoint, handle) = spawn_mock_rpc(
+            "aria2.getGlobalStat",
+            json!([]),
+            json!({
+                "jsonrpc": "2.0",
+                "id": "1",
+                "error": {"code": 1, "message": "unauthorized"}
+            }),
+        );
+        let client = Aria2Client::new(endpoint.as_str(), None).unwrap();
+
+        let error = client.get_global_stat().unwrap_err();
+
+        handle.join().unwrap();
+        assert!(matches!(
+            error,
+            Aria2RpcError::Rpc { code: 1, message } if message == "unauthorized"
+        ));
+    }
 }
