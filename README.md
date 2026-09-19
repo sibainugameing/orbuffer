@@ -90,6 +90,10 @@ The RPC endpoint defaults to `http://127.0.0.1:6800/jsonrpc`. Override it with `
 
 The launcher and RPC add command accept HTTP, HTTPS, FTP, FTPS, SFTP, and magnet URLs. Actual support depends on the installed aria2 build.
 
+### CI policy
+
+CI is intentionally not run on every push to `main`. It runs for relevant pull requests, for `v*` tags, or when manually dispatched from GitHub Actions. This keeps ordinary development commits from consuming CI runs while retaining a deliberate verification point for changes intended for review or release.
+
 ### Verification
 
 The earlier launcher commit passed the Rust GitHub Actions formatting and test workflow. The RPC implementation has its own Rust unit tests; the corresponding GitHub Actions run is the authoritative build check. Networked aria2 integration is not yet tested in CI.
