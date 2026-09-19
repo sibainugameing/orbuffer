@@ -81,6 +81,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export default function App() {
   const [url, setUrl] = useState("");
+  const [directory, setDirectory] = useState("");
+  const [output, setOutput] = useState("");
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -115,6 +117,8 @@ export default function App() {
           ...current,
           ...parsed,
         }));
+        setDirectory(typeof parsed.directory === "string" ? parsed.directory : "");
+        setOutput(typeof parsed.output === "string" ? parsed.output : "");
       } catch {
         // Ignore malformed local settings and keep defaults.
       }
@@ -155,7 +159,10 @@ export default function App() {
     try {
       setBusy(true);
       setError("");
-      localStorage.setItem("orbuffer.download-settings", JSON.stringify(settings));
+      localStorage.setItem(
+        "orbuffer.download-settings",
+        JSON.stringify({ ...settings, directory, output }),
+      );
       await call<boolean>("aria2_start", {
         port: 6800,
         maxConcurrentDownloads: settings.maxConcurrentDownloads,
@@ -187,7 +194,11 @@ export default function App() {
     try {
       setBusy(true);
       setError("");
-      await call<string>("aria2_add", { uri: value });
+      await call<string>("aria2_add", {
+        uri: value,
+        directory: directory.trim() || null,
+        output: output.trim() || null,
+      });
       setUrl("");
       setMessage("Download added to aria2.");
       await refresh();
@@ -317,6 +328,28 @@ export default function App() {
             <button className="primary-button" disabled={busy || !url.trim()}>
               Add
             </button>
+
+            <div className="add-options">
+              <label>
+                <span>Save directory</span>
+                <input
+                  value={directory}
+                  onChange={(event) => setDirectory(event.target.value)}
+                  placeholder="~/Downloads"
+                  spellCheck={false}
+                />
+              </label>
+
+              <label>
+                <span>Filename (optional)</span>
+                <input
+                  value={output}
+                  onChange={(event) => setOutput(event.target.value)}
+                  placeholder="Leave empty for automatic name"
+                  spellCheck={false}
+                />
+              </label>
+            </div>
           </form>
         </section>
 
