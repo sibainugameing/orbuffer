@@ -46,6 +46,8 @@ impl Aria2Process {
         port: u16,
         secret: Option<&str>,
         directory: Option<&Path>,
+        session_file: Option<&Path>,
+        load_session: bool,
     ) -> Result<Self, std::io::Error> {
         if !(1024..=65535).contains(&port) {
             return Err(std::io::Error::new(
@@ -72,6 +74,17 @@ impl Aria2Process {
 
         if let Some(directory) = directory {
             command.arg("--dir").arg(directory);
+        }
+
+        if let Some(session_file) = session_file {
+            command
+                .arg("--save-session")
+                .arg(session_file)
+                .arg("--save-session-interval=5");
+
+            if load_session && session_file.exists() {
+                command.arg("--input-file").arg(session_file);
+            }
         }
 
         let child = command.spawn()?;
@@ -200,6 +213,17 @@ impl Aria2Client {
         self.call("aria2.getGlobalStat", vec![])
     }
 
+    pub fn shutdown(&self) -> Result<String, Aria2RpcError> {
+        self.call("aria2.shutdown", vec![])?
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                Aria2RpcError::InvalidResponse(
+                    "aria2.shutdown result was not an OK string".to_string(),
+                )
+            })
+    }
+
     fn call_result_as_gid(
         &self,
         method: &str,
@@ -266,7 +290,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_rpc_port() {
-        let result = Aria2Process::start(0, None, None);
+        let result = Aria2Process::start(0, None, None, None, false);
         assert!(matches!(
             result,
             Err(error) if error.kind() == std::io::ErrorKind::InvalidInput
