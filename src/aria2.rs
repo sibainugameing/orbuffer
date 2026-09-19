@@ -300,8 +300,7 @@ mod tests {
             ]),
             json!({"jsonrpc": "2.0", "id": "1", "result": "gid-123"}),
         );
-        let client =
-            Aria2Client::new(endpoint.as_str(), Some("secret".to_string())).unwrap();
+        let client = Aria2Client::new(endpoint.as_str(), Some("secret".to_string())).unwrap();
 
         let gid = client
             .add_uri(
