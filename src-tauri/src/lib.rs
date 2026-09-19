@@ -56,17 +56,14 @@ fn aria2_start(
         .map_err(|_| "failed to lock aria2 process state".to_string())?;
 
     if let Some(existing) = process.as_mut() {
-        if existing
-            .is_running()
-            .map_err(|error| error.to_string())?
-        {
+        if existing.is_running().map_err(|error| error.to_string())? {
             return Ok(false);
         }
     }
 
     let endpoint = format!("http://127.0.0.1:{port}/jsonrpc");
-    let client = aria2::Aria2Client::new(&endpoint, secret.clone())
-        .map_err(|error| error.to_string())?;
+    let client =
+        aria2::Aria2Client::new(&endpoint, secret.clone()).map_err(|error| error.to_string())?;
 
     if client.get_global_stat().is_ok() {
         *state
