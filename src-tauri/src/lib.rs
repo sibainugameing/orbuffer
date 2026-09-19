@@ -236,11 +236,19 @@ pub fn run() {
         .run(|app, event| {
             if matches!(event, RunEvent::Exit) {
                 let state = app.state::<AppState>();
-                if let Ok(client) = state.client.lock() {
-                    let _ = client.shutdown();
-                }
-                if let Ok(mut process) = state.process.lock() {
-                    process.take();
+                let owns_aria2 = state
+                    .process
+                    .lock()
+                    .map(|process| process.is_some())
+                    .unwrap_or(false);
+
+                if owns_aria2 {
+                    if let Ok(client) = state.client.lock() {
+                        let _ = client.shutdown();
+                    }
+                    if let Ok(mut process) = state.process.lock() {
+                        process.take();
+                    }
                 }
             }
         });
