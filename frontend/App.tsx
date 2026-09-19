@@ -86,6 +86,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Preparing aria2…");
   const [error, setError] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState({
+    maxConcurrentDownloads: 3,
+    split: 4,
+    maxConnectionPerServer: 4,
+    minSplitSize: "20M",
+  });
 
   const refresh = useCallback(async () => {
     try {
@@ -100,9 +107,34 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const saved = localStorage.getItem("orbuffer.download-settings");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setSettings((current) => ({
+          ...current,
+          ...parsed,
+        }));
+      } catch {
+        // Ignore malformed local settings and keep defaults.
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     const initialize = async () => {
       try {
-        await call<boolean>("aria2_start", { port: 6800 });
+        const saved = localStorage.getItem("orbuffer.download-settings");
+        const settings = saved ? JSON.parse(saved) : {};
+        await call<boolean>("aria2_start", {
+          port: 6800,
+          maxConcurrentDownloads: Number(settings.maxConcurrentDownloads) || 3,
+          split: Number(settings.split) || 4,
+          maxConnectionPerServer: Number(settings.maxConnectionPerServer) || 4,
+          minSplitSize: typeof settings.minSplitSize === "string" && settings.minSplitSize.trim()
+            ? settings.minSplitSize.trim()
+            : "20M",
+        });
       } catch {
         // An already-running aria2 instance is fine; refresh below will connect to it.
       }
@@ -123,7 +155,14 @@ export default function App() {
     try {
       setBusy(true);
       setError("");
-      await call<boolean>("aria2_start", { port: 6800 });
+      localStorage.setItem("orbuffer.download-settings", JSON.stringify(settings));
+      await call<boolean>("aria2_start", {
+        port: 6800,
+        maxConcurrentDownloads: settings.maxConcurrentDownloads,
+        split: settings.split,
+        maxConnectionPerServer: settings.maxConnectionPerServer,
+        minSplitSize: settings.minSplitSize,
+      });
       setMessage("aria2 RPC is running on localhost:6800.");
       await refresh();
     } catch (reason) {
@@ -131,6 +170,13 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateSetting(key: keyof typeof settings, value: string | number) {
+    setSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
 
   async function addDownload(event: FormEvent) {
@@ -182,10 +228,75 @@ export default function App() {
             <div className="hero-number">{activeCount}</div>
             <p>active downloads</p>
           </div>
-          <button className="secondary-button" onClick={() => void startAria2()} disabled={busy}>
-            {running ? "Reconnect" : "Start aria2"}
-          </button>
+          <div className="hero-actions">
+            <button className="secondary-button" onClick={() => setShowSettings((value) => !value)}>
+              {showSettings ? "Hide settings" : "Settings"}
+            </button>
+            <button className="secondary-button" onClick={() => void startAria2()} disabled={busy}>
+              {running ? "Apply settings" : "Start aria2"}
+            </button>
+          </div>
         </section>
+
+        {showSettings && (
+          <section className="settings-card">
+            <div className="section-heading">
+              <div>
+                <div className="eyebrow">ARIA2 SETTINGS</div>
+                <h2>Transfer tuning</h2>
+              </div>
+            </div>
+
+            <div className="settings-grid">
+              <label>
+                <span>Concurrent downloads</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="64"
+                  value={settings.maxConcurrentDownloads}
+                  onChange={(event) => updateSetting("maxConcurrentDownloads", Number(event.target.value))}
+                />
+              </label>
+
+              <label>
+                <span>Split connections</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="32"
+                  value={settings.split}
+                  onChange={(event) => updateSetting("split", Number(event.target.value))}
+                />
+              </label>
+
+              <label>
+                <span>Connections / server</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="32"
+                  value={settings.maxConnectionPerServer}
+                  onChange={(event) => updateSetting("maxConnectionPerServer", Number(event.target.value))}
+                />
+              </label>
+
+              <label>
+                <span>Minimum split size</span>
+                <input
+                  value={settings.minSplitSize}
+                  onChange={(event) => updateSetting("minSplitSize", event.target.value)}
+                  placeholder="20M"
+                  spellCheck={false}
+                />
+              </label>
+            </div>
+
+            <p className="settings-note">
+              Changes apply to newly started aria2 sessions. Existing downloads keep their current aria2 options.
+            </p>
+          </section>
+        )}
 
         <section className="add-card">
           <div className="section-heading">
