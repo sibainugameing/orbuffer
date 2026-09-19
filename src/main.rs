@@ -6,6 +6,8 @@ use std::{
 
 use url::Url;
 
+mod aria2;
+
 fn main() -> ExitCode {
     match run() {
         Ok(code) => ExitCode::from(code),
