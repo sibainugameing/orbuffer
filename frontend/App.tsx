@@ -169,6 +169,7 @@ export default function App() {
       paused: downloads.filter((download) => download.status === "paused").length,
       complete: downloads.filter((download) => download.status === "complete").length,
       error: downloads.filter((download) => download.status === "error").length,
+      removed: downloads.filter((download) => download.status === "removed").length,
     }),
     [downloads],
   );
@@ -247,6 +248,26 @@ export default function App() {
       });
       setUrl("");
       setMessage("Download added to aria2.");
+      await refresh();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearFinished() {
+    try {
+      setBusy(true);
+      setError("");
+      const removed = await call<number>("aria2_clear_finished");
+      setMessage(`${removed} finished download${removed === 1 ? "" : "s"} cleared.`);
+      if (selectedGid) {
+        const selected = downloads.find((download) => download.gid === selectedGid);
+        if (selected && ["complete", "error", "removed"].includes(selected.status)) {
+          setSelectedGid(null);
+        }
+      }
       await refresh();
     } catch (reason) {
       setError(String(reason));
@@ -405,9 +426,16 @@ export default function App() {
               <div className="eyebrow">DOWNLOADS</div>
               <h2>Activity</h2>
             </div>
-            <button className="text-button" onClick={() => void refresh()} disabled={busy}>
-              Refresh
-            </button>
+            <div className="section-actions">
+              {stats.complete + stats.error + stats.removed > 0 && (
+                <button className="text-button" onClick={() => void clearFinished()} disabled={busy}>
+                  Clear finished
+                </button>
+              )}
+              <button className="text-button" onClick={() => void refresh()} disabled={busy}>
+                Refresh
+              </button>
+            </div>
           </div>
 
           <div className="stats-row">
