@@ -110,6 +110,6 @@ React + TypeScript
       network
 ```
 
-The next major step is to move the existing Rust prototype into the standard Tauri project layout and expose these RPC operations as Tauri commands. Tauri's current documentation uses a top-level frontend project with a `src-tauri/` Rust project and documents invoking Rust commands from the frontend. citeturn650746search0turn650746search3
+The next major step is to move the existing Rust prototype into the standard Tauri project layout and expose these RPC operations as Tauri commands. Tauri's current documentation uses a top-level frontend project with a `src-tauri/` Rust project and documents invoking Rust commands from the frontend.
 
 See [TODO.md](TODO.md) for the roadmap.
