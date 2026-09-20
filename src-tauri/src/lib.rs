@@ -481,16 +481,9 @@ fn validate_url(uri: &str) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
-
-            std::fs::create_dir_all(&app_data_dir)
-                .map_err(|error| format!("failed to create app data directory: {error}"))?;
-
-            let database = db::Database::open(&app_data_dir.join("orbuffer.db"))
-                .map_err(|error| format!("failed to open OrBuffer database: {error}"))?;
+            let app_data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&app_data_dir)?;
+            let database = db::Database::open(&app_data_dir.join("orbuffer.db"))?;
 
             app.manage(AppState::new(database));
             Ok(())
