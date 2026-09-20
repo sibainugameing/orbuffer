@@ -275,8 +275,7 @@ mod tests {
 
         database.sync_downloads(&[download]).unwrap();
 
-        let (uri, status, completed_length, files_json) =
-            database.download_row("gid-123").unwrap();
+        let (uri, status, completed_length, files_json) = database.download_row("gid-123").unwrap();
 
         assert_eq!(uri.as_deref(), Some("https://example.com/file.zip"));
         assert_eq!(status, "complete");
