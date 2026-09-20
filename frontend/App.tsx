@@ -284,7 +284,7 @@ export default function App() {
     }
   }
 
-  async function control(gid: string, command: "aria2_pause" | "aria2_resume" | "aria2_remove") {
+  async function control(gid: string, command: "aria2_pause" | "aria2_resume" | "aria2_remove" | "aria2_retry") {
     try {
       setError("");
       await call(command, { gid });
