@@ -57,7 +57,7 @@ impl AppState {
         let download = serde_json::json!({
             "status": "complete",
             "files": [{
-                "path": path,
+                "path": path.to_string_lossy(),
                 "length": body.len().to_string()
             }]
         });
@@ -81,7 +81,90 @@ impl AppState {
         let download = serde_json::json!({
             "status": "complete",
             "files": [{
-                "path": path,
+                use std::{path::PathBuf, sync::Mutex, thread::sleep, time::Duration};
+
+use serde_json::Value;
+use tauri::{AppHandle, Manager, RunEvent, State};
+use url::Url;
+
+mod aria2;
+
+const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:6800/jsonrpc";
+const DEFAULT_PORT: u16 = 6800;
+
+#[derive(Clone)]
+struct Aria2LaunchConfig {
+    port: u16,
+    secret: Option<String>,
+    directory: Option<PathBuf>,
+    session_file: PathBuf,
+    max_concurrent_downloads: u32,
+    split: u32,
+    max_connection_per_server: u32,
+    min_split_size: String,
+}
+
+struct AppState {
+    client: Mutex<aria2::Aria2Client>,
+    process: Mutex<Option<aria2::Aria2Process>>,
+    launch_config: Mutex<Option<Aria2LaunchConfig>>,
+}
+
+impl AppState {
+    fn new() -> Self {
+        let secret = std::env::var("ORBUFFER_ARIA2_SECRET")
+            .ok()
+            .filter(|value| !value.is_empty());
+        let client = aria2::Aria2Client::new(DEFAULT_ENDPOINT, secret)
+            .expect("default aria2 endpoint must be valid");
+
+        Self {
+            client: Mutex::new(client),
+            process: Mutex::new(None),
+            launch_config: Mutex::new(None),
+        }
+
+    #[test]
+    fn completed_download_is_marked_verified_when_file_sizes_match() {
+        let path = std::env::temp_dir().join(format!(
+            "orbuffer-verify-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let body = b"verified";
+        std::fs::write(&path, body).unwrap();
+
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": path.to_string_lossy(),
+                "length": body.len().to_string()
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "verified");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn completed_download_is_marked_mismatch_when_file_size_differs() {
+        let path = std::env::temp_dir().join(format!(
+            "orbuffer-verify-mismatch-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"wrong").unwrap();
+
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                
                 "length": "999"
             }]
         });
@@ -283,6 +366,7 @@ fn aria2_add(
     directory: Option<String>,
     output: Option<String>,
 ) -> Result<String, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
     validate_url(&uri)?;
     state
         .client
