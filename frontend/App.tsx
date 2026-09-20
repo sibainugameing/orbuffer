@@ -184,7 +184,7 @@ export default function App() {
     try {
       setSelectedGid(gid);
       setError("");
-      const detail = await call<Download>("aria2_status", { gid });
+      const detail = await call("aria2_status", { gid });
       setSelectedDownload(detail);
     } catch (reason) {
       setError(String(reason));
@@ -199,7 +199,7 @@ export default function App() {
         "orbuffer.download-settings",
         JSON.stringify({ ...settings, directory, output }),
       );
-      await call<boolean>("aria2_start", {
+      await call("aria2_start", {
         port: 6800,
         maxConcurrentDownloads: settings.maxConcurrentDownloads,
         split: settings.split,
