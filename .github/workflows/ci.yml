@@ -43,7 +43,7 @@ jobs:
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y             libwebkit2gtk-4.1-dev             build-essential             curl             wget             file             libxdo-dev             libssl-dev             libayatana-appindicator3-dev             librsvg2-dev
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             build-essential             curl             wget             file             libxdo-dev             libssl-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf             libfuse2
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
@@ -72,6 +72,6 @@ jobs:
       - name: Test Tauri Rust package
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 
-      - name: Build Tauri release binary
+      - name: Build Tauri release packages
         if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/v')
-        run: npm run tauri build -- --no-bundle
+        run: npm run tauri build
