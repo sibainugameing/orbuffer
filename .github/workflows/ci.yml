@@ -75,7 +75,7 @@ jobs:
 
   aria2-integration:
     name: aria2 local integration
-    if: startsWith(github.ref, 'refs/heads/v') || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/v') || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -90,4 +90,4 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run local aria2 integration test
-        run: cargo test --all-targets -- --ignored downloads_file_through_local_aria2_rpc
+        run: cargo test --all-targets -- --ignored downloads_file_through_local_aria2_rpc downloads_with_no_range_support_and_unknown_length_through_local_aria2_rpc
