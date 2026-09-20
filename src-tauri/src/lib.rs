@@ -40,151 +40,6 @@ impl AppState {
             process: Mutex::new(None),
             launch_config: Mutex::new(None),
         }
-
-    #[test]
-    fn completed_download_is_marked_verified_when_file_sizes_match() {
-        let path = std::env::temp_dir().join(format!(
-            "orbuffer-verify-{}-{}.bin",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let body = b"verified";
-        std::fs::write(&path, body).unwrap();
-
-        let download = serde_json::json!({
-            "status": "complete",
-            "files": [{
-                "path": path.to_string_lossy(),
-                "length": body.len().to_string()
-            }]
-        });
-
-        assert_eq!(verify_completed_files(&download), "verified");
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn completed_download_is_marked_mismatch_when_file_size_differs() {
-        let path = std::env::temp_dir().join(format!(
-            "orbuffer-verify-mismatch-{}-{}.bin",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::write(&path, b"wrong").unwrap();
-
-        let download = serde_json::json!({
-            "status": "complete",
-            "files": [{
-                use std::{path::PathBuf, sync::Mutex, thread::sleep, time::Duration};
-
-use serde_json::Value;
-use tauri::{AppHandle, Manager, RunEvent, State};
-use url::Url;
-
-mod aria2;
-
-const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:6800/jsonrpc";
-const DEFAULT_PORT: u16 = 6800;
-
-#[derive(Clone)]
-struct Aria2LaunchConfig {
-    port: u16,
-    secret: Option<String>,
-    directory: Option<PathBuf>,
-    session_file: PathBuf,
-    max_concurrent_downloads: u32,
-    split: u32,
-    max_connection_per_server: u32,
-    min_split_size: String,
-}
-
-struct AppState {
-    client: Mutex<aria2::Aria2Client>,
-    process: Mutex<Option<aria2::Aria2Process>>,
-    launch_config: Mutex<Option<Aria2LaunchConfig>>,
-}
-
-impl AppState {
-    fn new() -> Self {
-        let secret = std::env::var("ORBUFFER_ARIA2_SECRET")
-            .ok()
-            .filter(|value| !value.is_empty());
-        let client = aria2::Aria2Client::new(DEFAULT_ENDPOINT, secret)
-            .expect("default aria2 endpoint must be valid");
-
-        Self {
-            client: Mutex::new(client),
-            process: Mutex::new(None),
-            launch_config: Mutex::new(None),
-        }
-
-    #[test]
-    fn completed_download_is_marked_verified_when_file_sizes_match() {
-        let path = std::env::temp_dir().join(format!(
-            "orbuffer-verify-{}-{}.bin",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let body = b"verified";
-        std::fs::write(&path, body).unwrap();
-
-        let download = serde_json::json!({
-            "status": "complete",
-            "files": [{
-                "path": path.to_string_lossy(),
-                "length": body.len().to_string()
-            }]
-        });
-
-        assert_eq!(verify_completed_files(&download), "verified");
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn completed_download_is_marked_mismatch_when_file_size_differs() {
-        let path = std::env::temp_dir().join(format!(
-            "orbuffer-verify-mismatch-{}-{}.bin",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::write(&path, b"wrong").unwrap();
-
-        let download = serde_json::json!({
-            "status": "complete",
-            "files": [{
-                
-                "length": "999"
-            }]
-        });
-
-        assert_eq!(verify_completed_files(&download), "mismatch");
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn verification_is_unavailable_without_file_metadata() {
-        let download = serde_json::json!({
-            "status": "complete",
-            "files": [{
-                "path": "/tmp/file.bin"
-            }]
-        });
-
-        assert_eq!(verify_completed_files(&download), "unavailable");
-    }
-
     }
 }
 
@@ -388,7 +243,7 @@ fn aria2_active(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Val
         .map_err(|error| error.to_string())
 }
 
-fn annotate_verification(mut download: Value) -> Value {
+fn annotate_verification(mut download: Value) {
     if download.get("status").and_then(Value::as_str) == Some("complete") {
         let verification = verify_completed_files(&download);
         if let Some(object) = download.as_object_mut() {
@@ -620,4 +475,70 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completed_download_is_marked_verified_when_file_sizes_match() {
+        let path = std::env::temp_dir().join(format!(
+            "orbuffer-verify-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let body = b"verified";
+        std::fs::write(&path, body).unwrap();
+
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": path.to_string_lossy(),
+                "length": body.len().to_string()
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "verified");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn completed_download_is_marked_mismatch_when_file_size_differs() {
+        let path = std::env::temp_dir().join(format!(
+            "orbuffer-verify-mismatch-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"wrong").unwrap();
+
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": path.to_string_lossy(),
+                "length": "999"
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "mismatch");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn verification_is_unavailable_without_file_metadata() {
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": "/tmp/file.bin"
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "unavailable");
+    }
 }
