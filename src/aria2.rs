@@ -342,7 +342,7 @@ mod tests {
         use std::{
             fs,
             io::{Read, Write},
-            net::{TcpListener, TcpStream},
+            net::TcpListener,
             process::{Child, Command, Stdio},
             thread,
             time::{Duration, Instant},
