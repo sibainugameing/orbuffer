@@ -344,10 +344,7 @@ mod tests {
             io::{Read, Write},
             net::TcpListener,
             process::{Child, Command, Stdio},
-            sync::{
-                atomic::{AtomicBool, Ordering},
-                Arc,
-            },
+            sync::Arc,
             thread,
             time::{Duration, Instant},
         };
@@ -356,27 +353,24 @@ mod tests {
         const UNKNOWN_LENGTH_PATH: &str = "/unknown-length.bin";
         const BODY_LENGTH: usize = 512 * 1024;
 
-        let no_range_body = vec![b'n'; BODY_LENGTH];
-        let unknown_length_body = vec![b'u'; BODY_LENGTH];
+        let no_range_body = Arc::new(vec![b'n'; BODY_LENGTH]);
+        let unknown_length_body = Arc::new(vec![b'u'; BODY_LENGTH]);
 
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let http_address = listener.local_addr().unwrap();
         listener.set_nonblocking(true).unwrap();
 
-        let saw_range = Arc::new(AtomicBool::new(false));
-        let range_was_ignored = Arc::new(AtomicBool::new(false));
-        let stop_server = Arc::new(AtomicBool::new(false));
-
-        let server_saw_range = Arc::clone(&saw_range);
-        let server_range_ignored = Arc::clone(&range_was_ignored);
-        let server_stop = Arc::clone(&stop_server);
+        let server_no_range_body = Arc::clone(&no_range_body);
+        let server_unknown_length_body = Arc::clone(&unknown_length_body);
 
         let server = thread::spawn(move || {
-            while !server_stop.load(Ordering::Relaxed) {
+            let deadline = Instant::now() + Duration::from_secs(30);
+
+            loop {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
-                        let saw_range = Arc::clone(&server_saw_range);
-                        let range_ignored = Arc::clone(&server_range_ignored);
+                        let no_range_body = Arc::clone(&server_no_range_body);
+                        let unknown_length_body = Arc::clone(&server_unknown_length_body);
 
                         thread::spawn(move || {
                             let mut request = Vec::new();
@@ -397,34 +391,29 @@ mod tests {
                             }
 
                             let headers = String::from_utf8_lossy(&request);
-                            let mut lines = headers.lines();
-                            let request_line = lines.next().unwrap_or_default();
-                            let path = request_line.split_whitespace().nth(1).unwrap_or_default();
-                            let has_range = headers
+                            let path = headers
                                 .lines()
-                                .any(|line| line.to_ascii_lowercase().starts_with("range:"));
+                                .next()
+                                .and_then(|line| line.split_whitespace().nth(1))
+                                .unwrap_or_default();
 
                             let (body, include_length) = match path {
-                                NO_RANGE_PATH => {
-                                    if has_range {
-                                        saw_range.store(true, Ordering::Relaxed);
-                                        range_ignored.store(true, Ordering::Relaxed);
-                                    }
-                                    (&no_range_body, true)
-                                }
+                                NO_RANGE_PATH => (&no_range_body, true),
                                 UNKNOWN_LENGTH_PATH => (&unknown_length_body, false),
                                 _ => {
-                                    let response = b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n";
+                                    let response =
+                                        b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n";
                                     let _ = stream.write_all(response);
                                     return;
                                 }
                             };
 
-                            let mut response = format!(
+                            let mut response =
                                 "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
-                            );
+                                    .to_string();
                             if include_length {
-                                response.push_str(&format!("Content-Length: {}\r\n", body.len()));
+                                response
+                                    .push_str(&format!("Content-Length: {}\r\n", body.len()));
                             }
                             response.push_str("Connection: close\r\n\r\n");
 
@@ -436,6 +425,9 @@ mod tests {
                         });
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return;
+                        }
                         thread::sleep(Duration::from_millis(10));
                     }
                     Err(_) => return,
@@ -508,20 +500,18 @@ mod tests {
             .unwrap();
 
         let download_deadline = Instant::now() + Duration::from_secs(30);
-        let mut completed = 0;
+        loop {
+            let no_range_status = client.tell_status(&no_range_gid).unwrap();
+            let unknown_length_status = client.tell_status(&unknown_length_gid).unwrap();
 
-        while completed < 2 {
-            for gid in [&no_range_gid, &unknown_length_gid] {
-                let status = client.tell_status(gid).unwrap();
+            for (gid, status) in [
+                (&no_range_gid, &no_range_status),
+                (&unknown_length_gid, &unknown_length_status),
+            ] {
                 let state = status
                     .get("status")
                     .and_then(Value::as_str)
                     .unwrap_or("unknown");
-
-                match state {
-                    "complete" | "error" => {}
-                    _ => {}
-                }
 
                 if state == "error" {
                     panic!(
@@ -534,9 +524,7 @@ mod tests {
                 }
             }
 
-            let no_range_status = client.tell_status(&no_range_gid).unwrap();
-            let unknown_length_status = client.tell_status(&unknown_length_gid).unwrap();
-            completed = [
+            let complete = [
                 no_range_status.get("status").and_then(Value::as_str),
                 unknown_length_status.get("status").and_then(Value::as_str),
             ]
@@ -544,7 +532,7 @@ mod tests {
             .filter(|state| *state == Some("complete"))
             .count();
 
-            if completed == 2 {
+            if complete == 2 {
                 break;
             }
 
@@ -555,20 +543,17 @@ mod tests {
             thread::sleep(Duration::from_millis(50));
         }
 
-        assert_eq!(fs::read(temp_dir.join("no-range.bin")).unwrap(), no_range_body);
+        assert_eq!(
+            fs::read(temp_dir.join("no-range.bin")).unwrap(),
+            no_range_body.as_slice()
+        );
         assert_eq!(
             fs::read(temp_dir.join("unknown-length.bin")).unwrap(),
-            unknown_length_body
-        );
-
-        assert!(
-            saw_range.load(Ordering::Relaxed) || !range_was_ignored.load(Ordering::Relaxed),
-            "range request tracking reached an inconsistent state"
+            unknown_length_body.as_slice()
         );
 
         let _ = aria2.kill();
         let _ = aria2.wait();
-        stop_server.store(true, Ordering::Relaxed);
         server.join().unwrap();
         let _ = fs::remove_dir_all(temp_dir);
     }
