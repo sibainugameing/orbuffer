@@ -436,7 +436,11 @@ mod tests {
         )
     }
 
-    fn start_local_aria2(temp_dir: &std::path::Path) -> (std::process::Child, Aria2Client) {
+    fn start_local_aria2(
+        temp_dir: &std::path::Path,
+        split: u32,
+        min_split_size: Option<&str>,
+    ) -> (std::process::Child, Aria2Client) {
         use std::{
             net::TcpListener,
             process::{Child, Command, Stdio},
@@ -453,7 +457,8 @@ mod tests {
             .arg("--rpc-listen-all=false")
             .arg(format!("--rpc-listen-port={rpc_port}"))
             .arg("--max-concurrent-downloads=1")
-            .arg("--split=1")
+            .arg(format!("--split={split}"))
+            .args(min_split_size.into_iter().flat_map(|value| ["--min-split-size", value]))
             .arg("--continue=true")
             .arg("--allow-overwrite=true")
             .arg("--auto-file-renaming=false")
@@ -560,7 +565,7 @@ mod tests {
         );
         let temp_dir = temp_download_dir();
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let (aria2, client) = start_local_aria2(&temp_dir);
+        let (aria2, client) = start_local_aria2(&temp_dir, 1, None);
 
         let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
         let final_status = wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
@@ -584,49 +589,7 @@ mod tests {
         );
         let temp_dir = temp_download_dir();
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let (mut aria2, client) = start_local_aria2(&temp_dir);
-
-        let _ = aria2.kill();
-        let _ = aria2.wait();
-
-        let rpc_probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let rpc_port = rpc_probe.local_addr().unwrap().port();
-        drop(rpc_probe);
-
-        let mut aria2 = std::process::Command::new("aria2c")
-            .arg("--enable-rpc=true")
-            .arg("--rpc-listen-all=false")
-            .arg(format!("--rpc-listen-port={rpc_port}"))
-            .arg("--max-concurrent-downloads=1")
-            .arg("--split=4")
-            .arg("--min-split-size=1K")
-            .arg("--continue=true")
-            .arg("--allow-overwrite=true")
-            .arg("--auto-file-renaming=false")
-            .arg("--max-tries=3")
-            .arg("--retry-wait=0")
-            .arg("--console-log-level=warn")
-            .arg("--summary-interval=0")
-            .arg("--dir")
-            .arg(&temp_dir)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .unwrap();
-
-        let endpoint = format!("http://127.0.0.1:{rpc_port}/jsonrpc");
-        let client = Aria2Client::new(&endpoint, None).unwrap();
-
-        let startup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while client.get_global_stat().is_err() {
-            if aria2.try_wait().unwrap().is_some() {
-                panic!("aria2c exited before its RPC endpoint became ready");
-            }
-            if std::time::Instant::now() >= startup_deadline {
-                panic!("aria2 RPC endpoint did not become ready");
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
+        let (aria2, client) = start_local_aria2(&temp_dir, 4, Some("1K"));
 
         let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
         wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
@@ -645,7 +608,7 @@ mod tests {
         );
         let temp_dir = temp_download_dir();
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let (aria2, client) = start_local_aria2(&temp_dir);
+        let (aria2, client) = start_local_aria2(&temp_dir, 1, None);
 
         let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
         wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
@@ -665,7 +628,7 @@ mod tests {
         );
         let temp_dir = temp_download_dir();
         std::fs::create_dir_all(&temp_dir).unwrap();
-        let (aria2, client) = start_local_aria2(&temp_dir);
+        let (aria2, client) = start_local_aria2(&temp_dir, 1, None);
 
         let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
         wait_for_completion(&client, &gid, std::time::Duration::from_secs(20));
