@@ -499,10 +499,7 @@ mod tests {
     }
 
     fn wait_for_completion(client: &Aria2Client, gid: &str, timeout: std::time::Duration) -> Value {
-        use std::{
-            thread,
-            time::Instant,
-        };
+        use std::{thread, time::Instant};
 
         let deadline = Instant::now() + timeout;
 
@@ -556,13 +553,10 @@ mod tests {
     #[test]
     #[ignore = "requires aria2c"]
     fn downloads_file_through_local_aria2_rpc() {
-        let body = std::sync::Arc::new(
-            b"OrBuffer local aria2 integration test\n".to_vec(),
-        );
-        let (url, stop, server) = spawn_http_fixture(
-            std::sync::Arc::clone(&body),
-            FixtureMode::Full,
-        );
+        let body =
+            std::sync::Arc::new(b"OrBuffer local aria2 integration test\n".to_vec());
+        let (url, stop, server) =
+            spawn_http_fixture(std::sync::Arc::clone(&body), FixtureMode::Full);
         let temp_dir = temp_download_dir();
         std::fs::create_dir_all(&temp_dir).unwrap();
         let (aria2, client) = start_local_aria2(&temp_dir, 1, None);
@@ -570,9 +564,10 @@ mod tests {
         let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
         let final_status = wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
 
+        let expected_length = body.len().to_string();
         assert_eq!(
             final_status.get("completedLength").and_then(Value::as_str),
-            Some(body.len().to_string().as_str())
+            Some(expected_length.as_str())
         );
         assert_eq!(std::fs::read(temp_dir.join("fixture.bin")).unwrap(), *body);
 
