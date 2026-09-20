@@ -147,7 +147,7 @@ export default function App() {
               : null,
           maxConcurrentDownloads: Number(settings.maxConcurrentDownloads) || 3,
           split: Number(settings.split) || 4,
-          maxConnectionPerServer: Number(settings.maxConnectionPerServer) || 3,
+          maxConnectionPerServer: Number(settings.maxConnectionPerServer) || 4,
           minSplitSize:
             typeof settings.minSplitSize === "string" && settings.minSplitSize.trim()
               ? settings.minSplitSize.trim()
