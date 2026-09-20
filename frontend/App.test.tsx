@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import App from "./App";
@@ -54,6 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
   mockedInvoke.mockReset();
 });
@@ -70,7 +71,7 @@ describe("OrBuffer", () => {
     await renderReadyApp();
 
     expect(screen.getByText("Downloading")).toBeTruthy();
-    expect(screen.getByText("2.00 KiB/s")).toBeTruthy();
+    expect(screen.getAllByText("2.00 KiB/s")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
