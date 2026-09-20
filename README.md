@@ -129,6 +129,8 @@ Completed downloads are checked against the local files when their file paths an
 
 The Save directory field is stored locally and is also passed to an OrBuffer-managed aria2 process as its default directory on the next start. A download can override that directory, and the optional output field sets its filename.
 
+OrBuffer also stores application-side download metadata in SQLite at the Tauri app-data path as `orbuffer.db`. The schema is versioned and migrated at startup. SQLite stores download metadata and history-oriented snapshots; `aria2.session` remains responsible for aria2 queue restoration. See [DATABASE.md](docs/DATABASE.md) for the schema and migration model.
+
 ## Supported URLs
 
 The launcher and RPC add command accept:

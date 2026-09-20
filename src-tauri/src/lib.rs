@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager, RunEvent, State};
 use url::Url;
 
 mod aria2;
+mod db;
 
 const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:6800/jsonrpc";
 const DEFAULT_PORT: u16 = 6800;
@@ -25,10 +26,11 @@ struct AppState {
     client: Mutex<aria2::Aria2Client>,
     process: Mutex<Option<aria2::Aria2Process>>,
     launch_config: Mutex<Option<Aria2LaunchConfig>>,
+    database: Mutex<db::Database>,
 }
 
 impl AppState {
-    fn new() -> Self {
+    fn new(database: db::Database) -> Self {
         let secret = std::env::var("ORBUFFER_ARIA2_SECRET")
             .ok()
             .filter(|value| !value.is_empty());
@@ -39,6 +41,7 @@ impl AppState {
             client: Mutex::new(client),
             process: Mutex::new(None),
             launch_config: Mutex::new(None),
+            database: Mutex::new(database),
         }
     }
 }
@@ -213,6 +216,15 @@ fn ensure_owned_aria2(state: &AppState) -> Result<(), String> {
     Err("aria2c restart was attempted but its JSON-RPC endpoint did not become ready".to_string())
 }
 
+fn persist_downloads(state: &AppState, downloads: &[Value]) -> Result<(), String> {
+    state
+        .database
+        .lock()
+        .map_err(|_| "failed to lock sqlite database".to_string())?
+        .sync_downloads(downloads)
+        .map_err(|error| format!("failed to persist download state: {error}"))
+}
+
 #[tauri::command]
 fn aria2_add(
     state: State<'_, AppState>,
@@ -222,24 +234,42 @@ fn aria2_add(
 ) -> Result<String, String> {
     ensure_owned_aria2(state.inner())?;
     validate_url(&uri)?;
-    state
+
+    let gid = state
         .client
         .lock()
         .map_err(|_| "failed to lock aria2 client state".to_string())?
         .add_uri(&uri, directory.as_deref(), output.as_deref())
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    state
+        .database
+        .lock()
+        .map_err(|_| "failed to lock sqlite database".to_string())?
+        .record_added(&gid, &uri, directory.as_deref(), output.as_deref())
+        .map_err(|error| {
+            format!("download was added to aria2 but could not be persisted: {error}")
+        })?;
+
+    Ok(gid)
 }
 
 #[tauri::command]
 fn aria2_active(state: State<'_, AppState>) -> Result<Value, String> {
     ensure_owned_aria2(state.inner())?;
 
-    state
+    let downloads = state
         .client
         .lock()
         .map_err(|_| "failed to lock aria2 client state".to_string())?
         .tell_active()
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    if let Value::Array(items) = &downloads {
+        persist_downloads(state.inner(), items)?;
+    }
+
+    Ok(downloads)
 }
 
 fn annotate_verification(mut download: Value) -> Value {
@@ -290,25 +320,31 @@ fn verify_completed_files(download: &Value) -> &'static str {
 fn aria2_queue(state: State<'_, AppState>) -> Result<Value, String> {
     ensure_owned_aria2(state.inner())?;
 
-    let client = state
-        .client
-        .lock()
-        .map_err(|_| "failed to lock aria2 client state".to_string())?;
+    let downloads = {
+        let client = state
+            .client
+            .lock()
+            .map_err(|_| "failed to lock aria2 client state".to_string())?;
 
-    let mut downloads = Vec::new();
+        let mut downloads = Vec::new();
 
-    for result in [
-        client.tell_active(),
-        client.tell_waiting(0, 1000),
-        client.tell_stopped(0, 1000),
-    ] {
-        match result.map_err(|error| error.to_string())? {
-            Value::Array(items) => {
-                downloads.extend(items.into_iter().map(annotate_verification));
+        for result in [
+            client.tell_active(),
+            client.tell_waiting(0, 1000),
+            client.tell_stopped(0, 1000),
+        ] {
+            match result.map_err(|error| error.to_string())? {
+                Value::Array(items) => {
+                    downloads.extend(items.into_iter().map(annotate_verification));
+                }
+                _ => return Err("aria2 returned a non-array queue response".to_string()),
             }
-            _ => return Err("aria2 returned a non-array queue response".to_string()),
         }
-    }
+
+        downloads
+    };
+
+    persist_downloads(state.inner(), &downloads)?;
 
     Ok(Value::Array(downloads))
 }
@@ -317,13 +353,17 @@ fn aria2_queue(state: State<'_, AppState>) -> Result<Value, String> {
 fn aria2_status(state: State<'_, AppState>, gid: String) -> Result<Value, String> {
     ensure_owned_aria2(state.inner())?;
 
-    state
+    let download = state
         .client
         .lock()
         .map_err(|_| "failed to lock aria2 client state".to_string())?
         .tell_status(&gid)
         .map(annotate_verification)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    persist_downloads(state.inner(), std::slice::from_ref(&download))?;
+
+    Ok(download)
 }
 
 #[tauri::command]
@@ -354,12 +394,21 @@ fn aria2_resume(state: State<'_, AppState>, gid: String) -> Result<String, Strin
 fn aria2_remove(state: State<'_, AppState>, gid: String) -> Result<String, String> {
     ensure_owned_aria2(state.inner())?;
 
-    state
+    let result = state
         .client
         .lock()
         .map_err(|_| "failed to lock aria2 client state".to_string())?
         .remove(&gid)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    state
+        .database
+        .lock()
+        .map_err(|_| "failed to lock sqlite database".to_string())?
+        .mark_removed(&gid)
+        .map_err(|error| format!("download was removed from aria2 but its database record could not be updated: {error}"))?;
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -433,7 +482,14 @@ fn validate_url(uri: &str) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(AppState::new())
+        .setup(|app| {
+            let app_data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&app_data_dir)?;
+            let database = db::Database::open(&app_data_dir.join("orbuffer.db"))?;
+
+            app.manage(AppState::new(database));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             aria2_start,
             aria2_add,
