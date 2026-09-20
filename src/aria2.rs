@@ -336,62 +336,117 @@ mod tests {
         ));
     }
 
-    #[test]
-    #[ignore = "requires aria2c"]
-    fn downloads_file_through_local_aria2_rpc() {
+    #[derive(Clone, Copy)]
+    enum FixtureMode {
+        Full,
+        WithoutRangeSupport,
+        UnknownLength,
+        FailFirst { cutoff: usize },
+    }
+
+    fn spawn_http_fixture(
+        body: std::sync::Arc<Vec<u8>>,
+        mode: FixtureMode,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+        std::thread::JoinHandle<()>,
+    ) {
         use std::{
-            fs,
             io::{Read, Write},
+            net::TcpListener,
+            sync::atomic::AtomicBool,
+            thread,
+            time::{Duration, Instant},
+        };
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let stop_for_thread = std::sync::Arc::clone(&stop);
+
+        let handle = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            let request_count = std::sync::atomic::AtomicUsize::new(0);
+
+            while !stop_for_thread.load(std::sync::atomic::Ordering::Relaxed)
+                && Instant::now() < deadline
+            {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                };
+
+                let mut request = [0_u8; 4096];
+                let _ = stream.read(&mut request);
+                let request_number =
+                    request_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                match mode {
+                    FixtureMode::Full => {
+                        let headers = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        stream.write_all(headers.as_bytes()).unwrap();
+                        stream.write_all(&body).unwrap();
+                    }
+                    FixtureMode::WithoutRangeSupport => {
+                        let headers = format!(
+                            "HTTP/1.1 200 OK\r\nAccept-Ranges: none\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        stream.write_all(headers.as_bytes()).unwrap();
+                        stream.write_all(&body).unwrap();
+                    }
+                    FixtureMode::UnknownLength => {
+                        stream
+                            .write_all(
+                                b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n",
+                            )
+                            .unwrap();
+                        stream.write_all(&body).unwrap();
+                    }
+                    FixtureMode::FailFirst { cutoff } if request_number == 0 => {
+                        let headers = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        stream.write_all(headers.as_bytes()).unwrap();
+                        stream.write_all(&body[..cutoff.min(body.len())]).unwrap();
+                    }
+                    FixtureMode::FailFirst { .. } => {
+                        let headers = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        stream.write_all(headers.as_bytes()).unwrap();
+                        stream.write_all(&body).unwrap();
+                    }
+                }
+            }
+        });
+
+        (
+            format!("http://{address}/fixture.bin"),
+            stop,
+            handle,
+        )
+    }
+
+    fn start_local_aria2(temp_dir: &std::path::Path) -> (std::process::Child, Aria2Client) {
+        use std::{
             net::TcpListener,
             process::{Child, Command, Stdio},
             thread,
             time::{Duration, Instant},
         };
 
-        const BODY: &[u8] = b"OrBuffer local aria2 integration test\n";
-
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let http_address = listener.local_addr().unwrap();
-        listener.set_nonblocking(true).unwrap();
-
-        let server = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(10);
-
-            loop {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        let mut request = [0_u8; 4096];
-                        let _ = stream.read(&mut request);
-
-                        let headers = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                            BODY.len()
-                        );
-                        stream.write_all(headers.as_bytes()).unwrap();
-                        stream.write_all(BODY).unwrap();
-                        return;
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        if Instant::now() >= deadline {
-                            return;
-                        }
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => return,
-                }
-            }
-        });
-
         let rpc_probe = TcpListener::bind("127.0.0.1:0").unwrap();
         let rpc_port = rpc_probe.local_addr().unwrap().port();
         drop(rpc_probe);
-
-        let temp_dir = std::env::temp_dir().join(format!(
-            "orbuffer-aria2-e2e-{}-{}",
-            std::process::id(),
-            Instant::now().elapsed().as_nanos()
-        ));
-        fs::create_dir_all(&temp_dir).unwrap();
 
         let mut aria2: Child = Command::new("aria2c")
             .arg("--enable-rpc=true")
@@ -402,10 +457,14 @@ mod tests {
             .arg("--continue=true")
             .arg("--allow-overwrite=true")
             .arg("--auto-file-renaming=false")
+            .arg("--max-tries=3")
+            .arg("--retry-wait=0")
+            .arg("--connect-timeout=2")
+            .arg("--timeout=5")
             .arg("--console-log-level=warn")
             .arg("--summary-interval=0")
             .arg("--dir")
-            .arg(&temp_dir)
+            .arg(temp_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -431,20 +490,22 @@ mod tests {
             thread::sleep(Duration::from_millis(50));
         }
 
-        let url = format!("http://{http_address}/fixture.bin");
-        let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
+        (aria2, client)
+    }
 
-        let download_deadline = Instant::now() + Duration::from_secs(15);
-        let final_status = loop {
-            let status = client.tell_status(&gid).unwrap();
-            let state = status
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
+    fn wait_for_completion(client: &Aria2Client, gid: &str, timeout: std::time::Duration) -> Value {
+        use std::{
+            thread,
+            time::Instant,
+        };
 
-            match state {
-                "complete" => break status,
-                "error" => {
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            let status = client.tell_status(gid).unwrap();
+            match status.get("status").and_then(Value::as_str) {
+                Some("complete") => return status,
+                Some("error") => {
                     panic!(
                         "aria2 download failed: {}",
                         status
@@ -453,23 +514,164 @@ mod tests {
                             .unwrap_or("unknown error")
                     );
                 }
-                _ if Instant::now() >= download_deadline => {
+                _ if Instant::now() >= deadline => {
                     panic!("aria2 download did not complete within the timeout");
                 }
-                _ => thread::sleep(Duration::from_millis(50)),
+                _ => thread::sleep(std::time::Duration::from_millis(50)),
             }
-        };
+        }
+    }
 
-        let expected_length = BODY.len().to_string();
-        assert_eq!(
-            final_status.get("completedLength").and_then(Value::as_str),
-            Some(expected_length.as_str())
-        );
-        assert_eq!(fs::read(temp_dir.join("fixture.bin")).unwrap(), BODY);
+    fn temp_download_dir() -> std::path::PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
 
+        std::env::temp_dir().join(format!(
+            "orbuffer-aria2-e2e-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    fn cleanup_integration(
+        mut aria2: std::process::Child,
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        server: std::thread::JoinHandle<()>,
+        temp_dir: std::path::PathBuf,
+    ) {
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = aria2.kill();
         let _ = aria2.wait();
         server.join().unwrap();
-        let _ = fs::remove_dir_all(temp_dir);
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
+
+    #[test]
+    #[ignore = "requires aria2c"]
+    fn downloads_file_through_local_aria2_rpc() {
+        let body = std::sync::Arc::new(
+            b"OrBuffer local aria2 integration test\n".to_vec(),
+        );
+        let (url, stop, server) = spawn_http_fixture(
+            std::sync::Arc::clone(&body),
+            FixtureMode::Full,
+        );
+        let temp_dir = temp_download_dir();
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let (aria2, client) = start_local_aria2(&temp_dir);
+
+        let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
+        let final_status = wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
+
+        assert_eq!(
+            final_status.get("completedLength").and_then(Value::as_str),
+            Some(body.len().to_string().as_str())
+        );
+        assert_eq!(std::fs::read(temp_dir.join("fixture.bin")).unwrap(), *body);
+
+        cleanup_integration(aria2, stop, server, temp_dir);
+    }
+
+    #[test]
+    #[ignore = "requires aria2c"]
+    fn downloads_from_server_without_range_support() {
+        let body = std::sync::Arc::new(vec![b'R'; 16 * 1024]);
+        let (url, stop, server) = spawn_http_fixture(
+            std::sync::Arc::clone(&body),
+            FixtureMode::WithoutRangeSupport,
+        );
+        let temp_dir = temp_download_dir();
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let (mut aria2, client) = start_local_aria2(&temp_dir);
+
+        let _ = aria2.kill();
+        let _ = aria2.wait();
+
+        let rpc_probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_port = rpc_probe.local_addr().unwrap().port();
+        drop(rpc_probe);
+
+        let mut aria2 = std::process::Command::new("aria2c")
+            .arg("--enable-rpc=true")
+            .arg("--rpc-listen-all=false")
+            .arg(format!("--rpc-listen-port={rpc_port}"))
+            .arg("--max-concurrent-downloads=1")
+            .arg("--split=4")
+            .arg("--min-split-size=1K")
+            .arg("--continue=true")
+            .arg("--allow-overwrite=true")
+            .arg("--auto-file-renaming=false")
+            .arg("--max-tries=3")
+            .arg("--retry-wait=0")
+            .arg("--console-log-level=warn")
+            .arg("--summary-interval=0")
+            .arg("--dir")
+            .arg(&temp_dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let endpoint = format!("http://127.0.0.1:{rpc_port}/jsonrpc");
+        let client = Aria2Client::new(&endpoint, None).unwrap();
+
+        let startup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while client.get_global_stat().is_err() {
+            if aria2.try_wait().unwrap().is_some() {
+                panic!("aria2c exited before its RPC endpoint became ready");
+            }
+            if std::time::Instant::now() >= startup_deadline {
+                panic!("aria2 RPC endpoint did not become ready");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
+        wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
+
+        assert_eq!(std::fs::read(temp_dir.join("fixture.bin")).unwrap(), *body);
+        cleanup_integration(aria2, stop, server, temp_dir);
+    }
+
+    #[test]
+    #[ignore = "requires aria2c"]
+    fn downloads_file_with_unknown_content_length() {
+        let body = std::sync::Arc::new(b"OrBuffer unknown length integration test\n".repeat(2048));
+        let (url, stop, server) = spawn_http_fixture(
+            std::sync::Arc::clone(&body),
+            FixtureMode::UnknownLength,
+        );
+        let temp_dir = temp_download_dir();
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let (aria2, client) = start_local_aria2(&temp_dir);
+
+        let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
+        wait_for_completion(&client, &gid, std::time::Duration::from_secs(15));
+
+        assert_eq!(std::fs::read(temp_dir.join("fixture.bin")).unwrap(), *body);
+        cleanup_integration(aria2, stop, server, temp_dir);
+    }
+
+    #[test]
+    #[ignore = "requires aria2c"]
+    fn recovers_after_source_connection_is_interrupted() {
+        let body = std::sync::Arc::new(vec![b'N'; 64 * 1024]);
+        let cutoff = body.len() / 2;
+        let (url, stop, server) = spawn_http_fixture(
+            std::sync::Arc::clone(&body),
+            FixtureMode::FailFirst { cutoff },
+        );
+        let temp_dir = temp_download_dir();
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let (aria2, client) = start_local_aria2(&temp_dir);
+
+        let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
+        wait_for_completion(&client, &gid, std::time::Duration::from_secs(20));
+
+        assert_eq!(std::fs::read(temp_dir.join("fixture.bin")).unwrap(), *body);
+        cleanup_integration(aria2, stop, server, temp_dir);
+    }
+
 }
