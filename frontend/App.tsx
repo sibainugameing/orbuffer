@@ -1,25 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-
-type Aria2File = {
-  path?: string;
-  length?: string;
-  completedLength?: string;
-  selected?: string;
-};
-
-type Download = {
-  gid: string;
-  status: "active" | "waiting" | "paused" | "error" | "complete" | "removed" | string;
-  totalLength: string;
-  completedLength: string;
-  downloadSpeed: string;
-  uploadSpeed: string;
-  connections: string;
-  errorCode?: string;
-  errorMessage?: string;
-  files?: Aria2File[];
-};
+import type { Aria2CommandMap, Aria2File, Download } from "./contracts";
 
 function formatBytes(value: string): string {
   const bytes = Number(value);
@@ -75,8 +56,11 @@ function statusLabel(status: Download["status"]): string {
   }
 }
 
-async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  return invoke<T>(command, args);
+async function call<K extends keyof Aria2CommandMap>(
+  command: K,
+  args?: Aria2CommandMap[K]["args"],
+): Promise<Aria2CommandMap[K]["result"]> {
+  return invoke<Aria2CommandMap[K]["result"]>(command, args);
 }
 
 export default function App() {
@@ -104,8 +88,8 @@ export default function App() {
     try {
       setError("");
       const [result, global] = await Promise.all([
-        call<Download[]>("aria2_queue"),
-        call<{ downloadSpeed: string }>("aria2_global"),
+        call("aria2_queue"),
+        call("aria2_global"),
       ]);
       setDownloads(result);
       setGlobalSpeed(formatSpeed(global.downloadSpeed));
@@ -138,7 +122,7 @@ export default function App() {
       try {
         const saved = localStorage.getItem("orbuffer.download-settings");
         const settings = saved ? JSON.parse(saved) : {};
-        await call<boolean>("aria2_start", {
+        await call("aria2_start", {
           port: 6800,
           maxConcurrentDownloads: Number(settings.maxConcurrentDownloads) || 3,
           split: Number(settings.split) || 4,
@@ -191,7 +175,7 @@ export default function App() {
       return;
     }
 
-    void call<Download>("aria2_status", { gid: selectedGid })
+    void call("aria2_status", { gid: selectedGid })
       .then(setSelectedDownload)
       .catch(() => setSelectedDownload(null));
   }, [downloads, selectedGid]);
@@ -246,7 +230,7 @@ export default function App() {
     try {
       setBusy(true);
       setError("");
-      await call<string>("aria2_add", {
+      await call("aria2_add", {
         uri: value,
         directory: directory.trim() || null,
         output: output.trim() || null,
@@ -265,7 +249,7 @@ export default function App() {
     try {
       setBusy(true);
       setError("");
-      const removed = await call<number>("aria2_clear_finished");
+      const removed = await call("aria2_clear_finished");
       setMessage(`${removed} finished download${removed === 1 ? "" : "s"} cleared.`);
       if (selectedGid) {
         const selected = downloads.find((download) => download.gid === selectedGid);
@@ -284,7 +268,7 @@ export default function App() {
   async function control(gid: string, command: "aria2_pause" | "aria2_resume" | "aria2_remove") {
     try {
       setError("");
-      await call<string>(command, { gid });
+      await call(command, { gid });
       await refresh();
     } catch (reason) {
       setError(String(reason));
