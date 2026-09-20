@@ -354,7 +354,7 @@ mod tests {
 
         const NO_RANGE_PATH: &str = "/no-range.bin";
         const UNKNOWN_LENGTH_PATH: &str = "/unknown-length.bin";
-        const BODY_LENGTH: usize = 512 * 1024;
+        const BODY_LENGTH: usize = 8 * 1024 * 1024;
 
         let no_range_body = Arc::new(vec![b'n'; BODY_LENGTH]);
         let unknown_length_body = Arc::new(vec![b'u'; BODY_LENGTH]);
@@ -455,7 +455,7 @@ mod tests {
             .arg(format!("--rpc-listen-port={rpc_port}"))
             .arg("--max-concurrent-downloads=1")
             .arg("--split=4")
-            .arg("--min-split-size=1K")
+            .arg("--min-split-size=2M")
             .arg("--continue=true")
             .arg("--allow-overwrite=true")
             .arg("--auto-file-renaming=false")
@@ -468,7 +468,7 @@ mod tests {
             .arg("--dir")
             .arg(&temp_dir)
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()
             .expect("aria2c must be installed to run this ignored integration test");
 
