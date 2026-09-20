@@ -459,11 +459,12 @@ mod tests {
             }
         };
 
+        let expected_length = BODY.len().to_string();
         assert_eq!(
             final_status
                 .get("completedLength")
                 .and_then(Value::as_str),
-            Some(BODY.len().to_string().as_str())
+            Some(expected_length.as_str())
         );
         assert_eq!(fs::read(temp_dir.join("fixture.bin")).unwrap(), BODY);
 
