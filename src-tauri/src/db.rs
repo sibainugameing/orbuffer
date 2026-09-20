@@ -249,6 +249,35 @@ mod tests {
     }
 
     #[test]
+    fn removed_download_is_marked_removed() {
+        let mut database = Database::open_in_memory().unwrap();
+
+        database
+            .record_added(
+                "gid-removed",
+                "https://example.com/file.zip",
+                None,
+                None,
+            )
+            .unwrap();
+
+        let download = serde_json::json!({
+            "gid": "gid-removed",
+            "status": "complete",
+            "totalLength": "4096",
+            "completedLength": "4096",
+            "downloadSpeed": "0",
+            "uploadSpeed": "0",
+            "connections": "0"
+        });
+        database.sync_downloads(&[download]).unwrap();
+        database.mark_removed("gid-removed").unwrap();
+
+        let (_, status, _, _) = database.download_row("gid-removed").unwrap();
+        assert_eq!(status, "removed");
+    }
+
+    #[test]
     fn added_and_synced_download_is_persisted() {
         let mut database = Database::open_in_memory().unwrap();
 
