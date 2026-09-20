@@ -25,6 +25,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Set release version
+        run: node scripts/set-release-version.mjs "${{ github.ref_name }}"
+
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
