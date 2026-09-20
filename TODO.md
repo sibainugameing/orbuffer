@@ -44,7 +44,7 @@
 ## Phase 4 — Quality and release
 
 - [x] Add Rust unit tests for URL validation and RPC endpoint validation.
-- [ ] Add RPC request/response tests with a local mock server.
+- [x] Add RPC request/response tests with a local mock server.
 - [x] Add frontend component and interaction tests.
 - [ ] Test pause/resume across application restarts and network failures.
 - [ ] Test servers that do not support Range requests and servers with unknown file sizes through aria2.
