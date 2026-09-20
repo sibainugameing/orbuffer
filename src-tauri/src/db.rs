@@ -1,1 +1,289 @@
-use std::{\n    path::Path,\n    time::{SystemTime, UNIX_EPOCH},\n};\n\nuse rusqlite::{params, Connection, Transaction};\nuse serde_json::Value;\n\nconst CURRENT_SCHEMA_VERSION: i64 = 1;\n\nconst MIGRATION_1: &str = r#"\nCREATE TABLE IF NOT EXISTS downloads (\n    gid TEXT PRIMARY KEY,\n    uri TEXT,\n    directory TEXT,\n    output TEXT,\n    status TEXT NOT NULL,\n    total_length TEXT NOT NULL DEFAULT '0',\n    completed_length TEXT NOT NULL DEFAULT '0',\n    download_speed TEXT NOT NULL DEFAULT '0',\n    upload_speed TEXT NOT NULL DEFAULT '0',\n    connections TEXT NOT NULL DEFAULT '0',\n    error_code TEXT,\n    error_message TEXT,\n    verification TEXT,\n    files_json TEXT,\n    created_at INTEGER NOT NULL,\n    updated_at INTEGER NOT NULL\n);\n\nCREATE INDEX IF NOT EXISTS idx_downloads_status\n    ON downloads(status);\n\nCREATE INDEX IF NOT EXISTS idx_downloads_updated_at\n    ON downloads(updated_at);\n\nCREATE TABLE IF NOT EXISTS settings (\n    key TEXT PRIMARY KEY,\n    value_json TEXT NOT NULL,\n    updated_at INTEGER NOT NULL\n);\n"#;\n\npub struct Database {\n    connection: Connection,\n}\n\nimpl Database {\n    pub fn open(path: &Path) -> Result<Self, rusqlite::Error> {\n        let connection = Connection::open(path)?;\n        connection.pragma_update(None, "journal_mode", "WAL")?;\n        connection.pragma_update(None, "foreign_keys", "ON")?;\n\n        let mut database = Self { connection };\n        database.migrate()?;\n        Ok(database)\n    }\n\n    #[cfg(test)]\n    fn open_in_memory() -> Result<Self, rusqlite::Error> {\n        let connection = Connection::open_in_memory()?;\n        let mut database = Self { connection };\n        database.migrate()?;\n        Ok(database)\n    }\n\n    fn migrate(&mut self) -> Result<(), rusqlite::Error> {\n        self.connection.execute_batch(\n            "CREATE TABLE IF NOT EXISTS schema_migrations (\n                version INTEGER PRIMARY KEY,\n                applied_at INTEGER NOT NULL\n            );",\n        )?;\n\n        let current_version: i64 = self.connection.query_row(\n            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",\n            [],\n            |row| row.get(0),\n        )?;\n\n        if current_version < CURRENT_SCHEMA_VERSION {\n            let transaction = self.connection.transaction()?;\n            transaction.execute_batch(MIGRATION_1)?;\n            transaction.execute(\n                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",\n                params![CURRENT_SCHEMA_VERSION, unix_timestamp()],\n            )?;\n            transaction.commit()?;\n        }\n\n        Ok(())\n    }\n\n    pub fn record_added(\n        &mut self,\n        gid: &str,\n        uri: &str,\n        directory: Option<&str>,\n        output: Option<&str>,\n    ) -> Result<(), rusqlite::Error> {\n        let now = unix_timestamp();\n\n        self.connection.execute(\n            "INSERT INTO downloads (\n                gid, uri, directory, output, status, created_at, updated_at\n            ) VALUES (?1, ?2, ?3, ?4, 'waiting', ?5, ?5)\n            ON CONFLICT(gid) DO UPDATE SET\n                uri = excluded.uri,\n                directory = excluded.directory,\n                output = excluded.output,\n                updated_at = excluded.updated_at",\n            params![gid, uri, directory, output, now],\n        )?;\n\n        Ok(())\n    }\n\n    pub fn sync_downloads(&mut self, downloads: &[Value]) -> Result<(), rusqlite::Error> {\n        let transaction = self.connection.transaction()?;\n\n        for download in downloads {\n            let Some(gid) = string_field(download, "gid") else {\n                continue;\n            };\n            upsert_download(&transaction, gid, download)?;\n        }\n\n        transaction.commit()\n    }\n\n    pub fn mark_removed(&mut self, gid: &str) -> Result<(), rusqlite::Error> {\n        self.connection.execute(\n            "UPDATE downloads\n             SET status = 'removed', updated_at = ?2\n             WHERE gid = ?1",\n            params![gid, unix_timestamp()],\n        )?;\n        Ok(())\n    }\n\n    #[cfg(test)]\n    fn schema_version(&self) -> Result<i64, rusqlite::Error> {\n        self.connection.query_row(\n            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",\n            [],\n            |row| row.get(0),\n        )\n    }\n\n    #[cfg(test)]\n    fn download_row(\n        &self,\n        gid: &str,\n    ) -> Result<(Option<String>, String, String, Option<String>), rusqlite::Error> {\n        self.connection.query_row(\n            "SELECT uri, status, completed_length, files_json\n             FROM downloads\n             WHERE gid = ?1",\n            params![gid],\n            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),\n        )\n    }\n}\n\nfn upsert_download(\n    transaction: &Transaction<'_>,\n    gid: &str,\n    download: &Value,\n) -> Result<(), rusqlite::Error> {\n    let now = unix_timestamp();\n    let status = string_field(download, "status").unwrap_or("unknown");\n    let total_length = string_field(download, "totalLength").unwrap_or("0");\n    let completed_length = string_field(download, "completedLength").unwrap_or("0");\n    let download_speed = string_field(download, "downloadSpeed").unwrap_or("0");\n    let upload_speed = string_field(download, "uploadSpeed").unwrap_or("0");\n    let connections = string_field(download, "connections").unwrap_or("0");\n    let error_code = string_field(download, "errorCode");\n    let error_message = string_field(download, "errorMessage");\n    let verification = string_field(download, "verification");\n    let files_json = download\n        .get("files")\n        .and_then(|files| serde_json::to_string(files).ok());\n\n    transaction.execute(\n        "INSERT INTO downloads (\n            gid, status, total_length, completed_length, download_speed,\n            upload_speed, connections, error_code, error_message,\n            verification, files_json, created_at, updated_at\n        ) VALUES (\n            ?1, ?2, ?3, ?4, ?5,\n            ?6, ?7, ?8, ?9,\n            ?10, ?11, ?12, ?12\n        )\n        ON CONFLICT(gid) DO UPDATE SET\n            status = excluded.status,\n            total_length = excluded.total_length,\n            completed_length = excluded.completed_length,\n            download_speed = excluded.download_speed,\n            upload_speed = excluded.upload_speed,\n            connections = excluded.connections,\n            error_code = excluded.error_code,\n            error_message = excluded.error_message,\n            verification = excluded.verification,\n            files_json = excluded.files_json,\n            updated_at = excluded.updated_at",\n        params![\n            gid,\n            status,\n            total_length,\n            completed_length,\n            download_speed,\n            upload_speed,\n            connections,\n            error_code,\n            error_message,\n            verification,\n            files_json,\n            now,\n        ],\n    )?;\n\n    Ok(())\n}\n\nfn string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {\n    value.get(key).and_then(Value::as_str)\n}\n\nfn unix_timestamp() -> i64 {\n    SystemTime::now()\n        .duration_since(UNIX_EPOCH)\n        .map(|duration| duration.as_secs() as i64)\n        .unwrap_or_default()\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn migrations_are_applied_idempotently() {\n        let mut database = Database::open_in_memory().unwrap();\n\n        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);\n\n        database.migrate().unwrap();\n\n        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);\n    }\n\n    #[test]\n    fn added_and_synced_download_is_persisted() {\n        let mut database = Database::open_in_memory().unwrap();\n\n        database\n            .record_added(\n                "gid-123",\n                "https://example.com/file.zip",\n                Some("/tmp/downloads"),\n                Some("file.zip"),\n            )\n            .unwrap();\n\n        let download = serde_json::json!({\n            "gid": "gid-123",\n            "status": "complete",\n            "totalLength": "4096",\n            "completedLength": "4096",\n            "downloadSpeed": "0",\n            "uploadSpeed": "0",\n            "connections": "0",\n            "verification": "verified",\n            "files": [{"path": "/tmp/downloads/file.zip", "length": "4096"}]\n        });\n\n        database.sync_downloads(&[download]).unwrap();\n\n        let (uri, status, completed_length, files_json) =\n            database.download_row("gid-123").unwrap();\n\n        assert_eq!(uri.as_deref(), Some("https://example.com/file.zip"));\n        assert_eq!(status, "complete");\n        assert_eq!(completed_length, "4096");\n        assert_eq!(\n            files_json.as_deref(),\n            Some(r#"[{"path":"/tmp/downloads/file.zip","length":"4096"}]"#)\n        );\n    }\n}\n
+use std::{
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use rusqlite::{params, Connection, Transaction};
+use serde_json::Value;
+
+const CURRENT_SCHEMA_VERSION: i64 = 1;
+
+const MIGRATION_1: &str = r#"
+CREATE TABLE IF NOT EXISTS downloads (
+    gid TEXT PRIMARY KEY,
+    uri TEXT,
+    directory TEXT,
+    output TEXT,
+    status TEXT NOT NULL,
+    total_length TEXT NOT NULL DEFAULT '0',
+    completed_length TEXT NOT NULL DEFAULT '0',
+    download_speed TEXT NOT NULL DEFAULT '0',
+    upload_speed TEXT NOT NULL DEFAULT '0',
+    connections TEXT NOT NULL DEFAULT '0',
+    error_code TEXT,
+    error_message TEXT,
+    verification TEXT,
+    files_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_downloads_status
+    ON downloads(status);
+
+CREATE INDEX IF NOT EXISTS idx_downloads_updated_at
+    ON downloads(updated_at);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+"#;
+
+pub struct Database {
+    connection: Connection,
+}
+
+impl Database {
+    pub fn open(path: &Path) -> Result<Self, rusqlite::Error> {
+        let connection = Connection::open(path)?;
+        connection.pragma_update(None, "journal_mode", "WAL")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+
+        let mut database = Self { connection };
+        database.migrate()?;
+        Ok(database)
+    }
+
+    #[cfg(test)]
+    fn open_in_memory() -> Result<Self, rusqlite::Error> {
+        let connection = Connection::open_in_memory()?;
+        let mut database = Self { connection };
+        database.migrate()?;
+        Ok(database)
+    }
+
+    fn migrate(&mut self) -> Result<(), rusqlite::Error> {
+        self.connection.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at INTEGER NOT NULL
+            );",
+        )?;
+
+        let current_version: i64 = self.connection.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if current_version < CURRENT_SCHEMA_VERSION {
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(MIGRATION_1)?;
+            transaction.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",
+                params![CURRENT_SCHEMA_VERSION, unix_timestamp()],
+            )?;
+            transaction.commit()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn record_added(
+        &mut self,
+        gid: &str,
+        uri: &str,
+        directory: Option<&str>,
+        output: Option<&str>,
+    ) -> Result<(), rusqlite::Error> {
+        let now = unix_timestamp();
+
+        self.connection.execute(
+            "INSERT INTO downloads (
+                gid, uri, directory, output, status, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, 'waiting', ?5, ?5)
+            ON CONFLICT(gid) DO UPDATE SET
+                uri = excluded.uri,
+                directory = excluded.directory,
+                output = excluded.output,
+                updated_at = excluded.updated_at",
+            params![gid, uri, directory, output, now],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn sync_downloads(&mut self, downloads: &[Value]) -> Result<(), rusqlite::Error> {
+        let transaction = self.connection.transaction()?;
+
+        for download in downloads {
+            let Some(gid) = string_field(download, "gid") else {
+                continue;
+            };
+            upsert_download(&transaction, gid, download)?;
+        }
+
+        transaction.commit()
+    }
+
+    pub fn mark_removed(&mut self, gid: &str) -> Result<(), rusqlite::Error> {
+        self.connection.execute(
+            "UPDATE downloads
+             SET status = 'removed', updated_at = ?2
+             WHERE gid = ?1",
+            params![gid, unix_timestamp()],
+        )?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn schema_version(&self) -> Result<i64, rusqlite::Error> {
+        self.connection.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )
+    }
+
+    #[cfg(test)]
+    fn download_row(
+        &self,
+        gid: &str,
+    ) -> Result<(Option<String>, String, String, Option<String>), rusqlite::Error> {
+        self.connection.query_row(
+            "SELECT uri, status, completed_length, files_json
+             FROM downloads
+             WHERE gid = ?1",
+            params![gid],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+    }
+}
+
+fn upsert_download(
+    transaction: &Transaction<'_>,
+    gid: &str,
+    download: &Value,
+) -> Result<(), rusqlite::Error> {
+    let now = unix_timestamp();
+    let status = string_field(download, "status").unwrap_or("unknown");
+    let total_length = string_field(download, "totalLength").unwrap_or("0");
+    let completed_length = string_field(download, "completedLength").unwrap_or("0");
+    let download_speed = string_field(download, "downloadSpeed").unwrap_or("0");
+    let upload_speed = string_field(download, "uploadSpeed").unwrap_or("0");
+    let connections = string_field(download, "connections").unwrap_or("0");
+    let error_code = string_field(download, "errorCode");
+    let error_message = string_field(download, "errorMessage");
+    let verification = string_field(download, "verification");
+    let files_json = download
+        .get("files")
+        .and_then(|files| serde_json::to_string(files).ok());
+
+    transaction.execute(
+        "INSERT INTO downloads (
+            gid, status, total_length, completed_length, download_speed,
+            upload_speed, connections, error_code, error_message,
+            verification, files_json, created_at, updated_at
+        ) VALUES (
+            ?1, ?2, ?3, ?4, ?5,
+            ?6, ?7, ?8, ?9,
+            ?10, ?11, ?12, ?12
+        )
+        ON CONFLICT(gid) DO UPDATE SET
+            status = excluded.status,
+            total_length = excluded.total_length,
+            completed_length = excluded.completed_length,
+            download_speed = excluded.download_speed,
+            upload_speed = excluded.upload_speed,
+            connections = excluded.connections,
+            error_code = excluded.error_code,
+            error_message = excluded.error_message,
+            verification = excluded.verification,
+            files_json = excluded.files_json,
+            updated_at = excluded.updated_at",
+        params![
+            gid,
+            status,
+            total_length,
+            completed_length,
+            download_speed,
+            upload_speed,
+            connections,
+            error_code,
+            error_message,
+            verification,
+            files_json,
+            now,
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(Value::as_str)
+}
+
+fn unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrations_are_applied_idempotently() {
+        let mut database = Database::open_in_memory().unwrap();
+
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+
+        database.migrate().unwrap();
+
+        assert_eq!(database.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn added_and_synced_download_is_persisted() {
+        let mut database = Database::open_in_memory().unwrap();
+
+        database
+            .record_added(
+                "gid-123",
+                "https://example.com/file.zip",
+                Some("/tmp/downloads"),
+                Some("file.zip"),
+            )
+            .unwrap();
+
+        let download = serde_json::json!({
+            "gid": "gid-123",
+            "status": "complete",
+            "totalLength": "4096",
+            "completedLength": "4096",
+            "downloadSpeed": "0",
+            "uploadSpeed": "0",
+            "connections": "0",
+            "verification": "verified",
+            "files": [{"path": "/tmp/downloads/file.zip", "length": "4096"}]
+        });
+
+        database.sync_downloads(&[download]).unwrap();
+
+        let (uri, status, completed_length, files_json) =
+            database.download_row("gid-123").unwrap();
+
+        assert_eq!(uri.as_deref(), Some("https://example.com/file.zip"));
+        assert_eq!(status, "complete");
+        assert_eq!(completed_length, "4096");
+        assert_eq!(
+            files_json.as_deref(),
+            Some(r#"[{"path":"/tmp/downloads/file.zip","length":"4096"}]"#)
+        );
+    }
+}
