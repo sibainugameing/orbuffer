@@ -280,9 +280,10 @@ mod tests {
         assert_eq!(uri.as_deref(), Some("https://example.com/file.zip"));
         assert_eq!(status, "complete");
         assert_eq!(completed_length, "4096");
+        let persisted_files: Value = serde_json::from_str(files_json.as_deref().unwrap()).unwrap();
         assert_eq!(
-            files_json.as_deref(),
-            Some(r#"[{"path":"/tmp/downloads/file.zip","length":"4096"}]"#)
+            persisted_files,
+            serde_json::json!([{"path": "/tmp/downloads/file.zip", "length": "4096"}])
         );
     }
 }
