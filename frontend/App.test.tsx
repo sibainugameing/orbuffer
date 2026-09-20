@@ -21,6 +21,18 @@ const queue = [
     files: [{ path: "/tmp/example.zip" }],
   },
   {
+    gid: "gid-error",
+    status: "error",
+    totalLength: "8192",
+    completedLength: "2048",
+    downloadSpeed: "0",
+    uploadSpeed: "0",
+    connections: "0",
+    errorCode: "5",
+    errorMessage: "network error",
+    files: [{ path: "/tmp/error.zip" }],
+  },
+  {
     gid: "gid-complete",
     status: "complete",
     totalLength: "4096",
@@ -103,6 +115,16 @@ describe("OrBuffer", () => {
     await waitFor(() => {
       expect(screen.getByText("File check")).toBeTruthy();
       expect(screen.getByText("Verified")).toBeTruthy();
+    });
+  });
+
+  test("retries an errored download", async () => {
+    await renderReadyApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("aria2_retry", { gid: "gid-error" });
     });
   });
 
