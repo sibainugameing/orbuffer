@@ -148,7 +148,7 @@ fn aria2_start(
     Err("aria2c started but its JSON-RPC endpoint did not become ready".to_string())
 }
 
-fn ensure_owned_aria2(app_handle: &AppHandle, state: &AppState) -> Result<(), String> {
+fn ensure_owned_aria2(state: &AppState) -> Result<(), String> {
     {
         let mut process = state
             .process
@@ -221,7 +221,7 @@ fn aria2_add(
     directory: Option<String>,
     output: Option<String>,
 ) -> Result<String, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
     validate_url(&uri)?;
     state
         .client
@@ -233,7 +233,7 @@ fn aria2_add(
 
 #[tauri::command]
 fn aria2_active(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     state
         .client
@@ -243,7 +243,7 @@ fn aria2_active(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Val
         .map_err(|error| error.to_string())
 }
 
-fn annotate_verification(mut download: Value) {
+fn annotate_verification(mut download: Value) -> Value {
     if download.get("status").and_then(Value::as_str) == Some("complete") {
         let verification = verify_completed_files(&download);
         if let Some(object) = download.as_object_mut() {
@@ -289,7 +289,7 @@ fn verify_completed_files(download: &Value) -> &'static str {
 
 #[tauri::command]
 fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     let client = state
         .client
@@ -320,7 +320,7 @@ fn aria2_status(
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<Value, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     state
         .client
@@ -337,7 +337,7 @@ fn aria2_pause(
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<String, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     state
         .client
@@ -353,7 +353,7 @@ fn aria2_resume(
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<String, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     state
         .client
@@ -369,7 +369,7 @@ fn aria2_remove(
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<String, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     state
         .client
@@ -381,7 +381,7 @@ fn aria2_remove(
 
 #[tauri::command]
 fn aria2_clear_finished(app_handle: AppHandle, state: State<'_, AppState>) -> Result<u64, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     let client = state
         .client
@@ -414,7 +414,7 @@ fn aria2_clear_finished(app_handle: AppHandle, state: State<'_, AppState>) -> Re
 
 #[tauri::command]
 fn aria2_global(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    ensure_owned_aria2(&app_handle, state.inner())?;
+    ensure_owned_aria2(state.inner())?;
 
     state
         .client
