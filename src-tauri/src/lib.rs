@@ -40,6 +40,68 @@ impl AppState {
             process: Mutex::new(None),
             launch_config: Mutex::new(None),
         }
+
+    #[test]
+    fn completed_download_is_marked_verified_when_file_sizes_match() {
+        let path = std::env::temp_dir().join(format!(
+            "orbuffer-verify-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let body = b"verified";
+        std::fs::write(&path, body).unwrap();
+
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": path,
+                "length": body.len().to_string()
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "verified");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn completed_download_is_marked_mismatch_when_file_size_differs() {
+        let path = std::env::temp_dir().join(format!(
+            "orbuffer-verify-mismatch-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"wrong").unwrap();
+
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": path,
+                "length": "999"
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "mismatch");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn verification_is_unavailable_without_file_metadata() {
+        let download = serde_json::json!({
+            "status": "complete",
+            "files": [{
+                "path": "/tmp/file.bin"
+            }]
+        });
+
+        assert_eq!(verify_completed_files(&download), "unavailable");
+    }
+
     }
 }
 
@@ -242,6 +304,50 @@ fn aria2_active(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Val
         .map_err(|error| error.to_string())
 }
 
+fn annotate_verification(mut download: Value) -> Value {
+    if download.get("status").and_then(Value::as_str) == Some("complete") {
+        let verification = verify_completed_files(&download);
+        if let Some(object) = download.as_object_mut() {
+            object.insert(
+                "verification".to_string(),
+                Value::String(verification.to_string()),
+            );
+        }
+    }
+
+    download
+}
+
+fn verify_completed_files(download: &Value) -> &'static str {
+    let Some(files) = download.get("files").and_then(Value::as_array) else {
+        return "unavailable";
+    };
+
+    if files.is_empty() {
+        return "unavailable";
+    }
+
+    for file in files {
+        let Some(path) = file.get("path").and_then(Value::as_str) else {
+            return "unavailable";
+        };
+        let Some(length) = file
+            .get("length")
+            .and_then(Value::as_str)
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            return "unavailable";
+        };
+
+        match std::fs::metadata(path) {
+            Ok(metadata) if metadata.len() == length => {}
+            Ok(_) | Err(_) => return "mismatch",
+        }
+    }
+
+    "verified"
+}
+
 #[tauri::command]
 fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
     ensure_owned_aria2(&app_handle, state.inner())?;
@@ -259,7 +365,9 @@ fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Valu
         client.tell_stopped(0, 1000),
     ] {
         match result.map_err(|error| error.to_string())? {
-            Value::Array(items) => downloads.extend(items),
+            Value::Array(items) => {
+                downloads.extend(items.into_iter().map(annotate_verification));
+            }
             _ => return Err("aria2 returned a non-array queue response".to_string()),
         }
     }
@@ -280,6 +388,7 @@ fn aria2_status(
         .lock()
         .map_err(|_| "failed to lock aria2 client state".to_string())?
         .tell_status(&gid)
+        .map(annotate_verification)
         .map_err(|error| error.to_string())
 }
 
