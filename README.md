@@ -121,7 +121,7 @@ Start the Tauri desktop application in development mode:
 npm run tauri dev
 ```
 
-The desktop prototype starts a local aria2 RPC process when needed. aria2 session state is stored in the Tauri app-data directory as aria2.session and loaded on startup.
+The desktop prototype starts a local aria2 RPC process when needed. aria2 session state is stored in the Tauri app-data directory as aria2.session and loaded on startup. If an OrBuffer-managed aria2 process exits unexpectedly while the app remains open, the next aria2 operation attempts to restart it and restore the saved session.
 
 The Settings panel exposes aria2's concurrent-download limit, split count, per-server connection limit, and minimum split size. These values are saved locally by the frontend and applied when OrBuffer starts an aria2 session. They do not retroactively change options of already-running downloads.
 

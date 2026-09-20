@@ -1,4 +1,4 @@
-use std::{sync::Mutex, thread::sleep, time::Duration};
+use std::{path::PathBuf, sync::Mutex, thread::sleep, time::Duration};
 
 use serde_json::Value;
 use tauri::{AppHandle, Manager, RunEvent, State};
@@ -9,9 +9,22 @@ mod aria2;
 const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:6800/jsonrpc";
 const DEFAULT_PORT: u16 = 6800;
 
+#[derive(Clone)]
+struct Aria2LaunchConfig {
+    port: u16,
+    secret: Option<String>,
+    directory: Option<PathBuf>,
+    session_file: PathBuf,
+    max_concurrent_downloads: u32,
+    split: u32,
+    max_connection_per_server: u32,
+    min_split_size: String,
+}
+
 struct AppState {
     client: Mutex<aria2::Aria2Client>,
     process: Mutex<Option<aria2::Aria2Process>>,
+    launch_config: Mutex<Option<Aria2LaunchConfig>>,
 }
 
 impl AppState {
@@ -25,6 +38,7 @@ impl AppState {
         Self {
             client: Mutex::new(client),
             process: Mutex::new(None),
+            launch_config: Mutex::new(None),
         }
     }
 }
@@ -70,6 +84,10 @@ fn aria2_start(
             .client
             .lock()
             .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
+        *state
+            .launch_config
+            .lock()
+            .map_err(|_| "failed to lock aria2 launch configuration".to_string())? = None;
         return Ok(false);
     }
 
@@ -108,6 +126,20 @@ fn aria2_start(
                 .lock()
                 .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
             *process = Some(child);
+            *state
+                .launch_config
+                .lock()
+                .map_err(|_| "failed to lock aria2 launch configuration".to_string())? =
+                Some(Aria2LaunchConfig {
+                    port,
+                    secret,
+                    directory: directory_path.map(PathBuf::from),
+                    session_file,
+                    max_concurrent_downloads,
+                    split,
+                    max_connection_per_server,
+                    min_split_size,
+                });
             return Ok(true);
         }
         sleep(Duration::from_millis(50));
@@ -116,8 +148,74 @@ fn aria2_start(
     Err("aria2c started but its JSON-RPC endpoint did not become ready".to_string())
 }
 
+fn ensure_owned_aria2(app_handle: &AppHandle, state: &AppState) -> Result<(), String> {
+    {
+        let mut process = state
+            .process
+            .lock()
+            .map_err(|_| "failed to lock aria2 process state".to_string())?;
+
+        if let Some(existing) = process.as_mut() {
+            if existing
+                .is_running()
+                .map_err(|error| format!("failed to inspect aria2 process: {error}"))?
+            {
+                return Ok(());
+            }
+
+            process.take();
+        }
+    }
+
+    let config = state
+        .launch_config
+        .lock()
+        .map_err(|_| "failed to lock aria2 launch configuration".to_string())?
+        .clone();
+
+    let Some(config) = config else {
+        return Ok(());
+    };
+
+    let endpoint = format!("http://127.0.0.1:{}/jsonrpc", config.port);
+    let client = aria2::Aria2Client::new(&endpoint, config.secret.clone())
+        .map_err(|error| error.to_string())?;
+
+    if client.get_global_stat().is_ok() {
+        return Ok(());
+    }
+
+    let child = aria2::Aria2Process::start(
+        config.port,
+        config.secret.as_deref(),
+        config.directory.as_deref(),
+        Some(&config.session_file),
+        true,
+        config.max_concurrent_downloads,
+        config.split,
+        config.max_connection_per_server,
+        &config.min_split_size,
+    )
+    .map_err(|error| format!("failed to restart aria2c: {error}"))?;
+
+    for _ in 0..40 {
+        if client.get_global_stat().is_ok() {
+            *state
+                .process
+                .lock()
+                .map_err(|_| "failed to lock aria2 process state".to_string())? = Some(child);
+            return Ok(());
+        }
+
+        sleep(Duration::from_millis(50));
+    }
+
+    Err("aria2c restart was attempted but its JSON-RPC endpoint did not become ready".to_string())
+}
+
 #[tauri::command]
 fn aria2_add(
+    app_handle: AppHandle,
     state: State<'_, AppState>,
     uri: String,
     directory: Option<String>,
@@ -133,7 +231,9 @@ fn aria2_add(
 }
 
 #[tauri::command]
-fn aria2_active(state: State<'_, AppState>) -> Result<Value, String> {
+fn aria2_active(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     state
         .client
         .lock()
@@ -143,7 +243,9 @@ fn aria2_active(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn aria2_queue(state: State<'_, AppState>) -> Result<Value, String> {
+fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     let client = state
         .client
         .lock()
@@ -166,7 +268,13 @@ fn aria2_queue(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn aria2_status(state: State<'_, AppState>, gid: String) -> Result<Value, String> {
+fn aria2_status(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<Value, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     state
         .client
         .lock()
@@ -176,7 +284,13 @@ fn aria2_status(state: State<'_, AppState>, gid: String) -> Result<Value, String
 }
 
 #[tauri::command]
-fn aria2_pause(state: State<'_, AppState>, gid: String) -> Result<String, String> {
+fn aria2_pause(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<String, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     state
         .client
         .lock()
@@ -186,7 +300,13 @@ fn aria2_pause(state: State<'_, AppState>, gid: String) -> Result<String, String
 }
 
 #[tauri::command]
-fn aria2_resume(state: State<'_, AppState>, gid: String) -> Result<String, String> {
+fn aria2_resume(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<String, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     state
         .client
         .lock()
@@ -196,7 +316,13 @@ fn aria2_resume(state: State<'_, AppState>, gid: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-fn aria2_remove(state: State<'_, AppState>, gid: String) -> Result<String, String> {
+fn aria2_remove(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<String, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     state
         .client
         .lock()
@@ -206,7 +332,9 @@ fn aria2_remove(state: State<'_, AppState>, gid: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-fn aria2_clear_finished(state: State<'_, AppState>) -> Result<u64, String> {
+fn aria2_clear_finished(app_handle: AppHandle, state: State<'_, AppState>) -> Result<u64, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     let client = state
         .client
         .lock()
@@ -237,7 +365,9 @@ fn aria2_clear_finished(state: State<'_, AppState>) -> Result<u64, String> {
 }
 
 #[tauri::command]
-fn aria2_global(state: State<'_, AppState>) -> Result<Value, String> {
+fn aria2_global(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+    ensure_owned_aria2(&app_handle, state.inner())?;
+
     state
         .client
         .lock()
@@ -290,6 +420,9 @@ pub fn run() {
                     }
                     if let Ok(mut process) = state.process.lock() {
                         process.take();
+                    }
+                    if let Ok(mut config) = state.launch_config.lock() {
+                        config.take();
                     }
                 }
             }
