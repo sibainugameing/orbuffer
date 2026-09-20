@@ -13,6 +13,7 @@ on:
       - "frontend/**"
       - "src-tauri/**"
       - "vitest.config.ts"
+      - "scripts/**"
   push:
     branches:
       - "v*"
@@ -43,18 +44,7 @@ jobs:
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libfuse2
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             build-essential             curl             wget             file             libxdo-dev             libssl-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf             libfuse2
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
@@ -82,16 +72,3 @@ jobs:
 
       - name: Test Tauri Rust package
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
-
-      - name: Build Tauri Linux packages
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: npm run tauri build
-
-      - name: Upload Linux packages
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: OrBuffer-Linux-${{ github.ref_name }}
-          path: src-tauri/target/release/bundle/**
-          if-no-files-found: error
-          retention-days: 30
