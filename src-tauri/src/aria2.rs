@@ -245,6 +245,10 @@ impl Aria2Client {
         self.call_result_as_gid("aria2.remove", vec![json!(gid)])
     }
 
+    pub fn force_restart(&self, gid: &str) -> Result<String, Aria2RpcError> {
+        self.call_result_as_gid("aria2.forceRestart", vec![json!(gid)])
+    }
+
     pub fn remove_download_result(&self, gid: &str) -> Result<String, Aria2RpcError> {
         self.call_result_as_gid("aria2.removeDownloadResult", vec![json!(gid)])
     }
@@ -448,6 +452,21 @@ mod tests {
                 Some("file.zip"),
             )
             .unwrap();
+
+        handle.join().unwrap();
+        assert_eq!(gid, "gid-123");
+    }
+
+    #[test]
+    fn force_restart_sends_gid_to_rpc() {
+        let (endpoint, handle) = spawn_mock_rpc(
+            "aria2.forceRestart",
+            json!(["gid-123"]),
+            json!({"jsonrpc": "2.0", "id": "1", "result": "gid-123"}),
+        );
+        let client = Aria2Client::new(endpoint.as_str(), None).unwrap();
+
+        let gid = client.force_restart("gid-123").unwrap();
 
         handle.join().unwrap();
         assert_eq!(gid, "gid-123");

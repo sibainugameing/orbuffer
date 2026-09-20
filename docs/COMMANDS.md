@@ -104,6 +104,18 @@ Arguments:
 
 Returns the affected GID.
 
+## `aria2_retry`
+
+Restarts an errored/stopped download through aria2's `forceRestart` RPC operation.
+
+Arguments:
+
+| Name | Type |
+| --- | --- |
+| `gid` | string |
+
+Returns the affected GID.
+
 ## `aria2_clear_finished`
 
 Removes stopped results whose aria2 status is `complete`, `error`, or `removed`.

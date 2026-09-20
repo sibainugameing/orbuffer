@@ -284,7 +284,7 @@ export default function App() {
     }
   }
 
-  async function control(gid: string, command: "aria2_pause" | "aria2_resume" | "aria2_remove") {
+  async function control(gid: string, command: "aria2_pause" | "aria2_resume" | "aria2_remove" | "aria2_retry") {
     try {
       setError("");
       await call(command, { gid });
@@ -512,6 +512,9 @@ export default function App() {
                         )}
                         {download.status === "paused" && (
                           <button onClick={() => void control(download.gid, "aria2_resume")}>Resume</button>
+                        )}
+                        {download.status === "error" && (
+                          <button onClick={() => void control(download.gid, "aria2_retry")}>Retry</button>
                         )}
                         {download.status !== "complete" && download.status !== "removed" && (
                           <button onClick={() => void control(download.gid, "aria2_remove")}>Remove</button>

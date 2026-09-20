@@ -77,6 +77,10 @@ export type Aria2CommandMap = {
     args: GidArgs;
     result: string;
   };
+  aria2_retry: {
+    args: GidArgs;
+    result: string;
+  };
   aria2_clear_finished: {
     args: undefined;
     result: number;

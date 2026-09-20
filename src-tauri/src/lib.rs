@@ -363,6 +363,18 @@ fn aria2_remove(state: State<'_, AppState>, gid: String) -> Result<String, Strin
 }
 
 #[tauri::command]
+fn aria2_retry(state: State<'_, AppState>, gid: String) -> Result<String, String> {
+    ensure_owned_aria2(state.inner())?;
+
+    state
+        .client
+        .lock()
+        .map_err(|_| "failed to lock aria2 client state".to_string())?
+        .force_restart(&gid)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn aria2_clear_finished(state: State<'_, AppState>) -> Result<u64, String> {
     ensure_owned_aria2(state.inner())?;
 
@@ -431,6 +443,7 @@ pub fn run() {
             aria2_pause,
             aria2_resume,
             aria2_remove,
+            aria2_retry,
             aria2_clear_finished,
             aria2_global,
         ])
