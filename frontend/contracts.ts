@@ -5,6 +5,8 @@ export type Aria2File = {
   selected?: string;
 };
 
+export type DownloadVerification = "verified" | "mismatch" | "unavailable";
+
 export type Download = {
   gid: string;
   status: "active" | "waiting" | "paused" | "error" | "complete" | "removed" | string;
@@ -15,6 +17,7 @@ export type Download = {
   connections: string;
   errorCode?: string;
   errorMessage?: string;
+  verification?: DownloadVerification;
   files?: Aria2File[];
 };
 
