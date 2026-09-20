@@ -247,7 +247,9 @@ fn aria2_add(
         .lock()
         .map_err(|_| "failed to lock sqlite database".to_string())?
         .record_added(&gid, &uri, directory.as_deref(), output.as_deref())
-        .map_err(|error| format!("download was added to aria2 but could not be persisted: {error}"))?;
+        .map_err(|error| {
+            format!("download was added to aria2 but could not be persisted: {error}")
+        })?;
 
     Ok(gid)
 }
