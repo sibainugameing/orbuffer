@@ -113,6 +113,10 @@ Tauri commands return `Result<T, String>`.
 
 The frontend must treat the error string as user-visible diagnostic text and must not assume a successful value when the invocation rejects.
 
+## Event contract
+
+The MVP currently defines no custom Tauri event channels. The frontend refreshes aria2 state by polling `aria2_queue` and `aria2_global` once per second while the application is open.
+
 ## Validation contract
 
 `aria2_add` accepts only these URI schemes:
