@@ -92,6 +92,30 @@ describe("OrBuffer", () => {
     expect(screen.getByText("example.zip")).toBeTruthy();
   });
 
+  test("passes the saved directory to aria2 on startup", async () => {
+    localStorage.setItem(
+      "orbuffer.download-settings",
+      JSON.stringify({
+        maxConcurrentDownloads: 3,
+        split: 4,
+        maxConnectionPerServer: 4,
+        minSplitSize: "20M",
+        directory: "/tmp/default-downloads",
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "aria2_start",
+        expect.objectContaining({
+          directory: "/tmp/default-downloads",
+        }),
+      );
+    });
+  });
+
   test("submits a download with directory and filename options", async () => {
     await renderReadyApp();
 
