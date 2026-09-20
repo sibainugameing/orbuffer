@@ -45,11 +45,11 @@
 
 - [x] Add Rust unit tests for URL validation and RPC endpoint validation.
 - [ ] Add RPC request/response tests with a local mock server.
-- [ ] Add frontend component and interaction tests.
+- [x] Add frontend component and interaction tests.
 - [ ] Test pause/resume across application restarts and network failures.
 - [ ] Test servers that do not support Range requests and servers with unknown file sizes through aria2.
 - [ ] Check resource usage and performance with large downloads and multiple tasks.
-- [ ] Update README with features, setup, development, and troubleshooting instructions.
+- [x] Update README with features, setup, development, and troubleshooting instructions.
 - [ ] Add licensing and third-party dependency notices as needed.
 - [ ] Configure release builds and platform packaging.
 - [ ] Document known limitations and the initial release checklist.
