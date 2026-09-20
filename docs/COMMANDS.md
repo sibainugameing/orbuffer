@@ -42,6 +42,13 @@ Returns an array containing active, waiting, and stopped aria2 downloads.
 
 Each queue entry may contain fields such as:
 
+For completed downloads, `verification` is added when possible:
+
+- `verified`: every reported file exists and its local size matches aria2's `length`.
+- `mismatch`: a reported file is missing or its local size differs.
+- `unavailable`: the completed download does not expose enough file metadata to check.
+
+
 - `gid`
 - `status`
 - `totalLength`
