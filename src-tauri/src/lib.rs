@@ -448,6 +448,18 @@ fn aria2_clear_finished(state: State<'_, AppState>) -> Result<u64, String> {
                 client
                     .remove_download_result(gid)
                     .map_err(|error| error.to_string())?;
+
+                state
+                    .database
+                    .lock()
+                    .map_err(|_| "failed to lock sqlite database".to_string())?
+                    .mark_removed(gid)
+                    .map_err(|error| {
+                        format!(
+                            "download result was cleared from aria2 but its database record could not be updated: {error}"
+                        )
+                    })?;
+
                 removed += 1;
             }
         }
