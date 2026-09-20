@@ -182,10 +182,6 @@ fn ensure_owned_aria2(app_handle: &AppHandle, state: &AppState) -> Result<(), St
         .map_err(|error| error.to_string())?;
 
     if client.get_global_stat().is_ok() {
-        *state
-            .client
-            .lock()
-            .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
         return Ok(());
     }
 
@@ -204,10 +200,6 @@ fn ensure_owned_aria2(app_handle: &AppHandle, state: &AppState) -> Result<(), St
 
     for _ in 0..40 {
         if client.get_global_stat().is_ok() {
-            *state
-                .client
-                .lock()
-                .map_err(|_| "failed to lock aria2 client state".to_string())? = client;
             *state
                 .process
                 .lock()
