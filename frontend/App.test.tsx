@@ -28,7 +28,8 @@ const queue = [
     downloadSpeed: "0",
     uploadSpeed: "0",
     connections: "0",
-    files: [{ path: "/tmp/done.zip" }],
+    verification: "verified",
+    files: [{ path: "/tmp/done.zip", length: "4096" }],
   },
 ];
 
@@ -47,6 +48,8 @@ beforeEach(() => {
         return { downloadSpeed: "2048" };
       case "aria2_add":
         return "gid-new";
+      case "aria2_status":
+        return queue[1];
       default:
         return "OK";
     }
@@ -90,6 +93,17 @@ describe("OrBuffer", () => {
     fireEvent.click(screen.getByRole("button", { name: "1 complete" }));
 
     expect(screen.getByText("example.zip")).toBeTruthy();
+  });
+
+  test("shows file verification for a completed download", async () => {
+    await renderReadyApp();
+
+    fireEvent.click(screen.getByText("done.zip"));
+
+    await waitFor(() => {
+      expect(screen.getByText("File check")).toBeTruthy();
+      expect(screen.getByText("Verified")).toBeTruthy();
+    });
   });
 
   test("passes the saved directory to aria2 on startup", async () => {
