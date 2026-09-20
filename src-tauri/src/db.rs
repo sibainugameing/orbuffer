@@ -253,12 +253,7 @@ mod tests {
         let mut database = Database::open_in_memory().unwrap();
 
         database
-            .record_added(
-                "gid-removed",
-                "https://example.com/file.zip",
-                None,
-                None,
-            )
+            .record_added("gid-removed", "https://example.com/file.zip", None, None)
             .unwrap();
 
         let download = serde_json::json!({
