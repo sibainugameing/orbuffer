@@ -1,37 +1,46 @@
 # OrBuffer
 
-OrBuffer is an open-source download-manager project. The planned desktop application uses a Tauri 2 + React + TypeScript interface and delegates transfer work to aria2.
+OrBuffer is an open-source download-manager project. The desktop application uses a Tauri 2 + React + TypeScript interface and delegates transfer work to aria2.
 
 ## Current prototype
 
-The Rust prototype now has two paths:
+The project has two main paths:
 
-1. A direct launcher that starts `aria2c` for a single download.
-2. An aria2 JSON-RPC client for queue management.
+1. A Rust command-line launcher for a single download.
+2. A Tauri desktop GUI backed by an aria2 JSON-RPC client.
 
-aria2 owns the actual transfer work, including continuation, retries, segmented connections, and progress. OrBuffer does not implement a second HTTP download engine.
+aria2 owns the actual transfer work, including continuation, retries, segmented connections, queueing, and progress. OrBuffer does not implement a second HTTP download engine.
 
-### Requirements
+## Requirements
+
+For the Rust prototype:
 
 - Rust toolchain (Cargo)
-- aria2 (`aria2c`) installed and available on `PATH`
+- aria2 (aria2c) installed and available on PATH
 - For RPC commands, an aria2 instance with JSON-RPC enabled
 
-### Direct download
+For the desktop GUI:
+
+- Node.js 22 or newer
+- Rust toolchain
+- Linux desktop development dependencies required by Tauri on Linux
+- aria2 (aria2c) installed and available on PATH
+
+## Direct download
 
 ```sh
 cargo run -- "https://example.com/file.zip"
 ```
 
-Choose an explicit output path:
+Choose an explicit output file:
 
 ```sh
 cargo run -- "https://example.com/file.zip" "./file.zip"
 ```
 
-The launcher passes `--continue=true`, disables overwriting, enables automatic filename collision handling, configures up to five attempts, and shows aria2's console progress.
+The launcher passes continuation, overwrite protection, automatic filename collision handling, retry, timeout, and progress options to aria2.
 
-### aria2 JSON-RPC
+## aria2 JSON-RPC
 
 Start a local-only aria2 RPC server:
 
@@ -84,21 +93,90 @@ cargo run -- rpc resume <gid>
 cargo run -- rpc remove <gid>
 ```
 
-The RPC endpoint defaults to `http://127.0.0.1:6800/jsonrpc`. Override it with `ORBUFFER_ARIA2_RPC`.
+The RPC endpoint defaults to http://127.0.0.1:6800/jsonrpc. Override it with ORBUFFER_ARIA2_RPC.
 
-### Supported URLs
+## Desktop development
 
-The launcher and RPC add command accept HTTP, HTTPS, FTP, FTPS, SFTP, and magnet URLs. Actual support depends on the installed aria2 build.
+Install frontend dependencies:
 
-### CI policy
+```sh
+npm install
+```
 
-CI is intentionally not run on every push to `main`. It runs for relevant pull requests, for `v*` tags, or when manually dispatched from GitHub Actions. This keeps ordinary development commits from consuming CI runs while retaining a deliberate verification point for changes intended for review or release.
+Build the frontend:
 
-### Verification
+```sh
+npm run build
+```
 
-The earlier launcher commit passed the Rust GitHub Actions formatting and test workflow. The RPC implementation has its own Rust unit tests; the corresponding GitHub Actions run is the authoritative build check. Networked aria2 integration is not yet tested in CI.
+Run the frontend test suite:
 
-## Architecture direction
+```sh
+npm test
+```
+
+Start the Tauri desktop application in development mode:
+
+```sh
+npm run tauri dev
+```
+
+The desktop prototype starts a local aria2 RPC process when needed. aria2 session state is stored in the Tauri app-data directory as aria2.session and loaded on startup.
+
+The Settings panel exposes aria2's concurrent-download limit, split count, per-server connection limit, and minimum split size. These values are saved locally by the frontend and applied when OrBuffer starts an aria2 session. They do not retroactively change options of already-running downloads.
+
+The Add Download form accepts an optional save directory and filename. These fields are saved locally for convenience.
+
+## Supported URLs
+
+The launcher and RPC add command accept:
+
+- HTTP
+- HTTPS
+- FTP
+- FTPS
+- SFTP
+- magnet
+
+Actual protocol support depends on the installed aria2 build.
+
+## Testing and CI
+
+The CI workflow is intentionally not run on every push to main.
+
+It runs for:
+
+- pull requests that change application files
+- v* tags
+- v* verification branches used by connected automation
+- manual dispatches
+
+The CI checks:
+
+- frontend production build
+- frontend component and interaction tests
+- Rust formatting
+- Rust unit tests
+- Tauri Rust formatting
+- Tauri Rust tests
+- a Tauri package build for v* verification branches
+
+Networked downloads through a real aria2 instance are not yet part of the automated test suite.
+
+## Release flow
+
+Pushing a real v* Git tag starts the Release workflow.
+
+The Release workflow uses Tauri Action to build Linux packages configured by src-tauri/tauri.conf.json and creates a draft GitHub Release with the generated packages attached. The normal v* tag path does not duplicate that package build in CI.
+
+The repository currently targets:
+
+- Debian package (.deb)
+- AppImage
+
+Release packaging is configured, but a real tag-triggered package release has not yet been verified.
+
+## Architecture
 
 ```
 React + TypeScript
@@ -114,12 +192,4 @@ React + TypeScript
       network
 ```
 
-The desktop prototype now starts a local aria2 RPC process when needed. aria2 session state is stored in the Tauri app-data directory as `aria2.session` and loaded on startup, so unfinished/error downloads can be restored across application restarts. aria2 writes that session file periodically and on shutdown.
-
-The Settings panel exposes aria2's concurrent-download limit, split count, per-server connection limit, and minimum split size. These values are saved locally by the frontend and applied when OrBuffer starts an aria2 session. They do not retroactively change options of already-running downloads.
-
-The Add Download form can also pass an optional save directory and filename to aria2. These fields are saved locally for convenience. citeturn235547search0turn144993search0
-
-The next major step is to add persistent application metadata and settings around this aria2-backed queue. Tauri's current documentation uses a top-level frontend project with a `src-tauri/` Rust project and documents invoking Rust commands from the frontend.
-
-See [TODO.md](TODO.md) for the roadmap.
+See [MVP.md](docs/MVP.md) for the MVP scope and acceptance criteria. See [COMMANDS.md](docs/COMMANDS.md) for the Tauri command contracts. See [TODO.md](TODO.md) for the implementation roadmap.

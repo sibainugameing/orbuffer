@@ -4,7 +4,7 @@
 
 ## Project definition
 
-- [ ] Define the MVP scope and acceptance criteria.
+- [x] Define the MVP scope and acceptance criteria.
 - [ ] Confirm supported operating systems and minimum system requirements.
 - [x] Document the target architecture: Tauri 2 + React + TypeScript UI, Rust integration layer, and aria2 download engine.
 
@@ -44,12 +44,12 @@
 ## Phase 4 — Quality and release
 
 - [x] Add Rust unit tests for URL validation and RPC endpoint validation.
-- [ ] Add RPC request/response tests with a local mock server.
-- [ ] Add frontend component and interaction tests.
+- [x] Add RPC request/response tests with a local mock server.
+- [x] Add frontend component and interaction tests.
 - [ ] Test pause/resume across application restarts and network failures.
 - [ ] Test servers that do not support Range requests and servers with unknown file sizes through aria2.
 - [ ] Check resource usage and performance with large downloads and multiple tasks.
-- [ ] Update README with features, setup, development, and troubleshooting instructions.
+- [x] Update README with features, setup, development, and troubleshooting instructions.
 - [ ] Add licensing and third-party dependency notices as needed.
 - [ ] Configure release builds and platform packaging.
 - [ ] Document known limitations and the initial release checklist.

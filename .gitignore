@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.vitest/
+target/
+src-tauri/target/
+.DS_Store
