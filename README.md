@@ -159,7 +159,7 @@ The CI checks:
 - Rust unit tests
 - Tauri Rust formatting
 - Tauri Rust tests
-- a Tauri release-mode binary build for v* tags and v* verification branches
+- a Tauri package build for v* verification branches
 
 Networked downloads through a real aria2 instance are not yet part of the automated test suite.
 
@@ -167,7 +167,7 @@ Networked downloads through a real aria2 instance are not yet part of the automa
 
 Pushing a real v* Git tag starts the Release workflow.
 
-The Release workflow uses Tauri Action to build Linux packages configured by src-tauri/tauri.conf.json and creates a draft GitHub Release with the generated packages attached.
+The Release workflow uses Tauri Action to build Linux packages configured by src-tauri/tauri.conf.json and creates a draft GitHub Release with the generated packages attached. The normal v* tag path does not duplicate that package build in CI.
 
 The repository currently targets:
 
