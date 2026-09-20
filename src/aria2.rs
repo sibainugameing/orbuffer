@@ -338,6 +338,243 @@ mod tests {
 
     #[test]
     #[ignore = "requires aria2c"]
+    fn downloads_with_no_range_support_and_unknown_length_through_local_aria2_rpc() {
+        use std::{
+            fs,
+            io::{Read, Write},
+            net::TcpListener,
+            process::{Child, Command, Stdio},
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                Arc,
+            },
+            thread,
+            time::{Duration, Instant},
+        };
+
+        const NO_RANGE_PATH: &str = "/no-range.bin";
+        const UNKNOWN_LENGTH_PATH: &str = "/unknown-length.bin";
+        const BODY_LENGTH: usize = 512 * 1024;
+
+        let no_range_body = vec![b'n'; BODY_LENGTH];
+        let unknown_length_body = vec![b'u'; BODY_LENGTH];
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let http_address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+
+        let saw_range = Arc::new(AtomicBool::new(false));
+        let range_was_ignored = Arc::new(AtomicBool::new(false));
+        let stop_server = Arc::new(AtomicBool::new(false));
+
+        let server_saw_range = Arc::clone(&saw_range);
+        let server_range_ignored = Arc::clone(&range_was_ignored);
+        let server_stop = Arc::clone(&stop_server);
+
+        let server = thread::spawn(move || {
+            while !server_stop.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let saw_range = Arc::clone(&server_saw_range);
+                        let range_ignored = Arc::clone(&server_range_ignored);
+
+                        thread::spawn(move || {
+                            let mut request = Vec::new();
+                            let mut byte = [0_u8; 1];
+                            let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+
+                            loop {
+                                if stream.read_exact(&mut byte).is_err() {
+                                    return;
+                                }
+                                request.push(byte[0]);
+                                if request.ends_with(b"\r\n\r\n") {
+                                    break;
+                                }
+                                if request.len() > 16 * 1024 {
+                                    return;
+                                }
+                            }
+
+                            let headers = String::from_utf8_lossy(&request);
+                            let mut lines = headers.lines();
+                            let request_line = lines.next().unwrap_or_default();
+                            let path = request_line.split_whitespace().nth(1).unwrap_or_default();
+                            let has_range = headers
+                                .lines()
+                                .any(|line| line.to_ascii_lowercase().starts_with("range:"));
+
+                            let (body, include_length) = match path {
+                                NO_RANGE_PATH => {
+                                    if has_range {
+                                        saw_range.store(true, Ordering::Relaxed);
+                                        range_ignored.store(true, Ordering::Relaxed);
+                                    }
+                                    (&no_range_body, true)
+                                }
+                                UNKNOWN_LENGTH_PATH => (&unknown_length_body, false),
+                                _ => {
+                                    let response = b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n";
+                                    let _ = stream.write_all(response);
+                                    return;
+                                }
+                            };
+
+                            let mut response = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
+                            );
+                            if include_length {
+                                response.push_str(&format!("Content-Length: {}\r\n", body.len()));
+                            }
+                            response.push_str("Connection: close\r\n\r\n");
+
+                            if stream.write_all(response.as_bytes()).is_err() {
+                                return;
+                            }
+
+                            let _ = stream.write_all(body);
+                        });
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => return,
+                }
+            }
+        });
+
+        let rpc_probe = TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_port = rpc_probe.local_addr().unwrap().port();
+        drop(rpc_probe);
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbuffer-aria2-http-compat-{}-{}",
+            std::process::id(),
+            Instant::now().elapsed().as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let mut aria2: Child = Command::new("aria2c")
+            .arg("--enable-rpc=true")
+            .arg("--rpc-listen-all=false")
+            .arg(format!("--rpc-listen-port={rpc_port}"))
+            .arg("--max-concurrent-downloads=1")
+            .arg("--split=4")
+            .arg("--min-split-size=1K")
+            .arg("--continue=true")
+            .arg("--allow-overwrite=true")
+            .arg("--auto-file-renaming=false")
+            .arg("--max-tries=2")
+            .arg("--retry-wait=0")
+            .arg("--connect-timeout=2")
+            .arg("--timeout=5")
+            .arg("--console-log-level=warn")
+            .arg("--summary-interval=0")
+            .arg("--dir")
+            .arg(&temp_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("aria2c must be installed to run this ignored integration test");
+
+        let endpoint = format!("http://127.0.0.1:{rpc_port}/jsonrpc");
+        let client = Aria2Client::new(&endpoint, None).unwrap();
+
+        let startup_deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if client.get_global_stat().is_ok() {
+                break;
+            }
+
+            if aria2.try_wait().unwrap().is_some() {
+                panic!("aria2c exited before its RPC endpoint became ready");
+            }
+
+            if Instant::now() >= startup_deadline {
+                panic!("aria2 RPC endpoint did not become ready");
+            }
+
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        let no_range_url = format!("http://{http_address}{NO_RANGE_PATH}");
+        let no_range_gid = client
+            .add_uri(&no_range_url, None, Some("no-range.bin"))
+            .unwrap();
+
+        let unknown_length_url = format!("http://{http_address}{UNKNOWN_LENGTH_PATH}");
+        let unknown_length_gid = client
+            .add_uri(&unknown_length_url, None, Some("unknown-length.bin"))
+            .unwrap();
+
+        let download_deadline = Instant::now() + Duration::from_secs(30);
+        let mut completed = 0;
+
+        while completed < 2 {
+            for gid in [&no_range_gid, &unknown_length_gid] {
+                let status = client.tell_status(gid).unwrap();
+                let state = status
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+
+                match state {
+                    "complete" | "error" => {}
+                    _ => {}
+                }
+
+                if state == "error" {
+                    panic!(
+                        "aria2 download failed for {gid}: {}",
+                        status
+                            .get("errorMessage")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown error")
+                    );
+                }
+            }
+
+            let no_range_status = client.tell_status(&no_range_gid).unwrap();
+            let unknown_length_status = client.tell_status(&unknown_length_gid).unwrap();
+            completed = [
+                no_range_status.get("status").and_then(Value::as_str),
+                unknown_length_status.get("status").and_then(Value::as_str),
+            ]
+            .into_iter()
+            .filter(|state| *state == Some("complete"))
+            .count();
+
+            if completed == 2 {
+                break;
+            }
+
+            if Instant::now() >= download_deadline {
+                panic!("aria2 compatibility downloads did not complete within the timeout");
+            }
+
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        assert_eq!(fs::read(temp_dir.join("no-range.bin")).unwrap(), no_range_body);
+        assert_eq!(
+            fs::read(temp_dir.join("unknown-length.bin")).unwrap(),
+            unknown_length_body
+        );
+
+        assert!(
+            saw_range.load(Ordering::Relaxed) || !range_was_ignored.load(Ordering::Relaxed),
+            "range request tracking reached an inconsistent state"
+        );
+
+        let _ = aria2.kill();
+        let _ = aria2.wait();
+        stop_server.store(true, Ordering::Relaxed);
+        server.join().unwrap();
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    #[ignore = "requires aria2c"]
     fn downloads_file_through_local_aria2_rpc() {
         use std::{
             fs,
