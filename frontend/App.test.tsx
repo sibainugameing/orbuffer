@@ -82,6 +82,26 @@ async function renderReadyApp() {
 }
 
 describe("OrBuffer", () => {
+  test("shows the aria2 startup error when startup and connection both fail", async () => {
+    mockedInvoke.mockImplementation(async (command) => {
+      switch (command) {
+        case "aria2_start":
+          throw new Error("aria2 executable failed to start");
+        case "aria2_queue":
+        case "aria2_global":
+          throw new Error("aria2 RPC unavailable");
+        default:
+          return "OK";
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Error: aria2 executable failed to start")).toBeTruthy();
+    });
+  });
+
   test("renders queue information and opens settings", async () => {
     await renderReadyApp();
 
