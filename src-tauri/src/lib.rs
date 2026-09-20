@@ -215,7 +215,6 @@ fn ensure_owned_aria2(state: &AppState) -> Result<(), String> {
 
 #[tauri::command]
 fn aria2_add(
-    app_handle: AppHandle,
     state: State<'_, AppState>,
     uri: String,
     directory: Option<String>,
@@ -232,7 +231,7 @@ fn aria2_add(
 }
 
 #[tauri::command]
-fn aria2_active(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+fn aria2_active(state: State<'_, AppState>) -> Result<Value, String> {
     ensure_owned_aria2(state.inner())?;
 
     state
@@ -288,7 +287,7 @@ fn verify_completed_files(download: &Value) -> &'static str {
 }
 
 #[tauri::command]
-fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+fn aria2_queue(state: State<'_, AppState>) -> Result<Value, String> {
     ensure_owned_aria2(state.inner())?;
 
     let client = state
@@ -316,7 +315,6 @@ fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Valu
 
 #[tauri::command]
 fn aria2_status(
-    app_handle: AppHandle,
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<Value, String> {
@@ -333,7 +331,6 @@ fn aria2_status(
 
 #[tauri::command]
 fn aria2_pause(
-    app_handle: AppHandle,
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<String, String> {
@@ -349,7 +346,6 @@ fn aria2_pause(
 
 #[tauri::command]
 fn aria2_resume(
-    app_handle: AppHandle,
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<String, String> {
@@ -365,7 +361,6 @@ fn aria2_resume(
 
 #[tauri::command]
 fn aria2_remove(
-    app_handle: AppHandle,
     state: State<'_, AppState>,
     gid: String,
 ) -> Result<String, String> {
@@ -380,7 +375,7 @@ fn aria2_remove(
 }
 
 #[tauri::command]
-fn aria2_clear_finished(app_handle: AppHandle, state: State<'_, AppState>) -> Result<u64, String> {
+fn aria2_clear_finished(state: State<'_, AppState>) -> Result<u64, String> {
     ensure_owned_aria2(state.inner())?;
 
     let client = state
@@ -413,7 +408,7 @@ fn aria2_clear_finished(app_handle: AppHandle, state: State<'_, AppState>) -> Re
 }
 
 #[tauri::command]
-fn aria2_global(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+fn aria2_global(state: State<'_, AppState>) -> Result<Value, String> {
     ensure_owned_aria2(state.inner())?;
 
     state
