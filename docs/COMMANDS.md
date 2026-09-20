@@ -1,6 +1,6 @@
 # Tauri Command Contracts
 
-The desktop frontend communicates with Rust through Tauri commands.
+The desktop frontend communicates with Rust through Tauri commands. The TypeScript mapping for command arguments and results lives in `frontend/contracts.ts`.
 
 ## `aria2_start`
 
