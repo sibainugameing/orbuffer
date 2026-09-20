@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 concurrency:
   group: orbuffer-release-${{ github.ref }}
@@ -41,14 +40,14 @@ jobs:
         run: npm install
 
       - name: Build and publish Tauri packages
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: OrBuffer v__VERSION__
+          tagName: ${{ github.ref_name }}
+          releaseName: OrBuffer ${{ github.ref_name }}
           releaseBody: |
-            OrBuffer release v__VERSION__.
+            OrBuffer ${{ github.ref_name }}.
 
             Linux packages are attached to this GitHub Release.
           releaseDraft: true
