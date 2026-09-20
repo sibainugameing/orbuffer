@@ -11,7 +11,7 @@
 ## Phase 1 — Application foundation
 
 - [x] Create the standard Tauri 2 + React + TypeScript project structure.
-- [ ] Establish Rust/TypeScript command and event contracts.
+- [x] Establish Rust/TypeScript command and event contracts.
 - [ ] Add SQLite persistence and database migrations.
 - [ ] Add application logging and structured error reporting.
 
