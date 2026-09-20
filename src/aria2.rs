@@ -432,14 +432,15 @@ mod tests {
         }
 
         let url = format!("http://{http_address}/fixture.bin");
-        let gid = client
-            .add_uri(&url, None, Some("fixture.bin"))
-            .unwrap();
+        let gid = client.add_uri(&url, None, Some("fixture.bin")).unwrap();
 
         let download_deadline = Instant::now() + Duration::from_secs(15);
         let final_status = loop {
             let status = client.tell_status(&gid).unwrap();
-            let state = status.get("status").and_then(Value::as_str).unwrap_or("unknown");
+            let state = status
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
 
             match state {
                 "complete" => break status,
@@ -461,9 +462,7 @@ mod tests {
 
         let expected_length = BODY.len().to_string();
         assert_eq!(
-            final_status
-                .get("completedLength")
-                .and_then(Value::as_str),
+            final_status.get("completedLength").and_then(Value::as_str),
             Some(expected_length.as_str())
         );
         assert_eq!(fs::read(temp_dir.join("fixture.bin")).unwrap(), BODY);
