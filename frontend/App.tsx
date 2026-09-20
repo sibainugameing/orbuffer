@@ -37,6 +37,19 @@ function filename(download: Download): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
+function verificationLabel(verification: Download["verification"]): string {
+  switch (verification) {
+    case "verified":
+      return "Verified";
+    case "mismatch":
+      return "Size mismatch";
+    case "unavailable":
+      return "Unavailable";
+    default:
+      return "Not checked";
+  }
+}
+
 function statusLabel(status: Download["status"]): string {
   switch (status) {
     case "active":
@@ -544,6 +557,12 @@ export default function App() {
                   <span>Connections</span>
                   <strong>{selectedDownload.connections || "—"}</strong>
                 </div>
+                {selectedDownload.status === "complete" && (
+                  <div>
+                    <span>File check</span>
+                    <strong>{verificationLabel(selectedDownload.verification)}</strong>
+                  </div>
+                )}
                 <div>
                   <span>GID</span>
                   <strong>{selectedDownload.gid}</strong>
