@@ -13,6 +13,7 @@ on:
       - "frontend/**"
       - "src-tauri/**"
       - "vitest.config.ts"
+      - "scripts/**"
   push:
     branches:
       - "v*"
@@ -43,18 +44,7 @@ jobs:
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libfuse2
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             build-essential             curl             wget             file             libxdo-dev             libssl-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf             libfuse2
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
@@ -83,6 +73,21 @@ jobs:
       - name: Test Tauri Rust package
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 
-      - name: Build Tauri verification executable
-        if: startsWith(github.ref, 'refs/heads/v') || startsWith(github.ref, 'refs/tags/v')
-        run: npm run tauri build
+  aria2-integration:
+    name: aria2 local integration
+    if: startsWith(github.ref, 'refs/heads/v') || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install aria2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run local aria2 integration test
+        run: cargo test --all-targets -- --ignored downloads_file_through_local_aria2_rpc
