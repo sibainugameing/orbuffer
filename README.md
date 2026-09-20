@@ -192,4 +192,4 @@ React + TypeScript
       network
 ```
 
-See [TODO.md](TODO.md) for the implementation roadmap.
+See [MVP.md](docs/MVP.md) for the MVP scope and acceptance criteria. See [TODO.md](TODO.md) for the implementation roadmap.
