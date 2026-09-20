@@ -97,7 +97,7 @@ export default function App() {
     minSplitSize: "20M",
   });
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<boolean> => {
     try {
       setError("");
       const [result, global] = await Promise.all([
@@ -107,9 +107,11 @@ export default function App() {
       setDownloads(result);
       setGlobalSpeed(formatSpeed(global.downloadSpeed));
       setRunning(true);
+      return true;
     } catch (reason) {
       setRunning(false);
       setError(String(reason));
+      return false;
     }
   }, []);
 
@@ -132,6 +134,8 @@ export default function App() {
 
   useEffect(() => {
     const initialize = async () => {
+      let startupError = "";
+
       try {
         const saved = localStorage.getItem("orbuffer.download-settings");
         const settings = saved ? JSON.parse(saved) : {};
@@ -143,16 +147,20 @@ export default function App() {
               : null,
           maxConcurrentDownloads: Number(settings.maxConcurrentDownloads) || 3,
           split: Number(settings.split) || 4,
-          maxConnectionPerServer: Number(settings.maxConnectionPerServer) || 4,
+          maxConnectionPerServer: Number(settings.maxConnectionPerServer) || 3,
           minSplitSize:
             typeof settings.minSplitSize === "string" && settings.minSplitSize.trim()
               ? settings.minSplitSize.trim()
               : "20M",
         });
-      } catch {
-        // An already-running aria2 instance is fine; refresh below will connect to it.
+      } catch (reason) {
+        startupError = String(reason);
       }
-      await refresh();
+
+      const connected = await refresh();
+      if (!connected && startupError) {
+        setError(startupError);
+      }
     };
 
     void initialize();
