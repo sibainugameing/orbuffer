@@ -268,7 +268,11 @@ fn aria2_queue(app_handle: AppHandle, state: State<'_, AppState>) -> Result<Valu
 }
 
 #[tauri::command]
-fn aria2_status(app_handle: AppHandle, state: State<'_, AppState>, gid: String) -> Result<Value, String> {
+fn aria2_status(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<Value, String> {
     ensure_owned_aria2(&app_handle, state.inner())?;
 
     state
@@ -280,7 +284,11 @@ fn aria2_status(app_handle: AppHandle, state: State<'_, AppState>, gid: String) 
 }
 
 #[tauri::command]
-fn aria2_pause(app_handle: AppHandle, state: State<'_, AppState>, gid: String) -> Result<String, String> {
+fn aria2_pause(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<String, String> {
     ensure_owned_aria2(&app_handle, state.inner())?;
 
     state
@@ -292,7 +300,11 @@ fn aria2_pause(app_handle: AppHandle, state: State<'_, AppState>, gid: String) -
 }
 
 #[tauri::command]
-fn aria2_resume(app_handle: AppHandle, state: State<'_, AppState>, gid: String) -> Result<String, String> {
+fn aria2_resume(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<String, String> {
     ensure_owned_aria2(&app_handle, state.inner())?;
 
     state
@@ -304,7 +316,11 @@ fn aria2_resume(app_handle: AppHandle, state: State<'_, AppState>, gid: String) 
 }
 
 #[tauri::command]
-fn aria2_remove(app_handle: AppHandle, state: State<'_, AppState>, gid: String) -> Result<String, String> {
+fn aria2_remove(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    gid: String,
+) -> Result<String, String> {
     ensure_owned_aria2(&app_handle, state.inner())?;
 
     state
