@@ -4,7 +4,7 @@
 
 ## Project definition
 
-- [ ] Define the MVP scope and acceptance criteria.
+- [x] Define the MVP scope and acceptance criteria.
 - [ ] Confirm supported operating systems and minimum system requirements.
 - [x] Document the target architecture: Tauri 2 + React + TypeScript UI, Rust integration layer, and aria2 download engine.
 
