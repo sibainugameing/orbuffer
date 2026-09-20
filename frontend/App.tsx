@@ -124,12 +124,17 @@ export default function App() {
         const settings = saved ? JSON.parse(saved) : {};
         await call("aria2_start", {
           port: 6800,
+          directory:
+            typeof settings.directory === "string" && settings.directory.trim()
+              ? settings.directory.trim()
+              : null,
           maxConcurrentDownloads: Number(settings.maxConcurrentDownloads) || 3,
           split: Number(settings.split) || 4,
           maxConnectionPerServer: Number(settings.maxConnectionPerServer) || 4,
-          minSplitSize: typeof settings.minSplitSize === "string" && settings.minSplitSize.trim()
-            ? settings.minSplitSize.trim()
-            : "20M",
+          minSplitSize:
+            typeof settings.minSplitSize === "string" && settings.minSplitSize.trim()
+              ? settings.minSplitSize.trim()
+              : "20M",
         });
       } catch {
         // An already-running aria2 instance is fine; refresh below will connect to it.
@@ -201,6 +206,7 @@ export default function App() {
       );
       await call("aria2_start", {
         port: 6800,
+        directory: directory.trim() || null,
         maxConcurrentDownloads: settings.maxConcurrentDownloads,
         split: settings.split,
         maxConnectionPerServer: settings.maxConnectionPerServer,

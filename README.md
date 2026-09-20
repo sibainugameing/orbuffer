@@ -125,7 +125,7 @@ The desktop prototype starts a local aria2 RPC process when needed. aria2 sessio
 
 The Settings panel exposes aria2's concurrent-download limit, split count, per-server connection limit, and minimum split size. These values are saved locally by the frontend and applied when OrBuffer starts an aria2 session. They do not retroactively change options of already-running downloads.
 
-The Add Download form accepts an optional save directory and filename. These fields are saved locally for convenience.
+The Save directory field is stored locally and is also passed to an OrBuffer-managed aria2 process as its default directory on the next start. A download can override that directory, and the optional output field sets its filename.
 
 ## Supported URLs
 
