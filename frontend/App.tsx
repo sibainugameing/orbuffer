@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { Aria2CommandMap, Aria2File, Download } from "./contracts";
+import type { Aria2CommandMap, Download } from "./contracts";
 
 function formatBytes(value: string): string {
   const bytes = Number(value);
