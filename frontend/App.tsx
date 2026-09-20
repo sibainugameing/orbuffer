@@ -513,6 +513,9 @@ export default function App() {
                         {download.status === "paused" && (
                           <button onClick={() => void control(download.gid, "aria2_resume")}>Resume</button>
                         )}
+                        {download.status === "error" && (
+                          <button onClick={() => void control(download.gid, "aria2_retry")}>Retry</button>
+                        )}
                         {download.status !== "complete" && download.status !== "removed" && (
                           <button onClick={() => void control(download.gid, "aria2_remove")}>Remove</button>
                         )}
