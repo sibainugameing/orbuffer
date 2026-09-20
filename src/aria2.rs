@@ -344,7 +344,10 @@ mod tests {
             io::{Read, Write},
             net::TcpListener,
             process::{Child, Command, Stdio},
-            sync::Arc,
+            sync::{
+                atomic::{AtomicBool, Ordering},
+                Arc,
+            },
             thread,
             time::{Duration, Instant},
         };
@@ -362,10 +365,10 @@ mod tests {
 
         let server_no_range_body = Arc::clone(&no_range_body);
         let server_unknown_length_body = Arc::clone(&unknown_length_body);
+        let stop_server = Arc::new(AtomicBool::new(false));
+        let server_stop = Arc::clone(&stop_server);
 
         let server = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(30);
-
             loop {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
@@ -425,7 +428,7 @@ mod tests {
                         });
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        if Instant::now() >= deadline {
+                        if server_stop.load(Ordering::Relaxed) {
                             return;
                         }
                         thread::sleep(Duration::from_millis(10));
@@ -554,6 +557,7 @@ mod tests {
 
         let _ = aria2.kill();
         let _ = aria2.wait();
+        stop_server.store(true, Ordering::Relaxed);
         server.join().unwrap();
         let _ = fs::remove_dir_all(temp_dir);
     }
