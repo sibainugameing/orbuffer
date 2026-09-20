@@ -335,4 +335,141 @@ mod tests {
             Aria2RpcError::Rpc { code: 1, message } if message == "unauthorized"
         ));
     }
+
+    #[test]
+    #[ignore = "requires aria2c"]
+    fn downloads_file_through_local_aria2_rpc() {
+        use std::{
+            fs,
+            io::{Read, Write},
+            net::{TcpListener, TcpStream},
+            process::{Child, Command, Stdio},
+            thread,
+            time::{Duration, Instant},
+        };
+
+        const BODY: &[u8] = b"OrBuffer local aria2 integration test\n";
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let http_address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+
+        let server = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(10);
+
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let mut request = [0_u8; 4096];
+                        let _ = stream.read(&mut request);
+
+                        let headers = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            BODY.len()
+                        );
+                        stream.write_all(headers.as_bytes()).unwrap();
+                        stream.write_all(BODY).unwrap();
+                        return;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return;
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => return,
+                }
+            }
+        });
+
+        let rpc_probe = TcpListener::bind("127.0.0.1:0").unwrap();
+        let rpc_port = rpc_probe.local_addr().unwrap().port();
+        drop(rpc_probe);
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbuffer-aria2-e2e-{}-{}",
+            std::process::id(),
+            Instant::now().elapsed().as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let mut aria2: Child = Command::new("aria2c")
+            .arg("--enable-rpc=true")
+            .arg("--rpc-listen-all=false")
+            .arg(format!("--rpc-listen-port={rpc_port}"))
+            .arg("--max-concurrent-downloads=1")
+            .arg("--split=1")
+            .arg("--continue=true")
+            .arg("--allow-overwrite=true")
+            .arg("--auto-file-renaming=false")
+            .arg("--console-log-level=warn")
+            .arg("--summary-interval=0")
+            .arg("--dir")
+            .arg(&temp_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("aria2c must be installed to run this ignored integration test");
+
+        let endpoint = format!("http://127.0.0.1:{rpc_port}/jsonrpc");
+        let client = Aria2Client::new(&endpoint, None).unwrap();
+
+        let startup_deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if client.get_global_stat().is_ok() {
+                break;
+            }
+
+            if aria2.try_wait().unwrap().is_some() {
+                panic!("aria2c exited before its RPC endpoint became ready");
+            }
+
+            if Instant::now() >= startup_deadline {
+                panic!("aria2 RPC endpoint did not become ready");
+            }
+
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        let url = format!("http://{http_address}/fixture.bin");
+        let gid = client
+            .add_uri(&url, None, Some("fixture.bin"))
+            .unwrap();
+
+        let download_deadline = Instant::now() + Duration::from_secs(15);
+        let final_status = loop {
+            let status = client.tell_status(&gid).unwrap();
+            let state = status.get("status").and_then(Value::as_str).unwrap_or("unknown");
+
+            match state {
+                "complete" => break status,
+                "error" => {
+                    panic!(
+                        "aria2 download failed: {}",
+                        status
+                            .get("errorMessage")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown error")
+                    );
+                }
+                _ if Instant::now() >= download_deadline => {
+                    panic!("aria2 download did not complete within the timeout");
+                }
+                _ => thread::sleep(Duration::from_millis(50)),
+            }
+        };
+
+        assert_eq!(
+            final_status
+                .get("completedLength")
+                .and_then(Value::as_str),
+            Some(BODY.len().to_string().as_str())
+        );
+        assert_eq!(fs::read(temp_dir.join("fixture.bin")).unwrap(), BODY);
+
+        let _ = aria2.kill();
+        let _ = aria2.wait();
+        server.join().unwrap();
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 }
