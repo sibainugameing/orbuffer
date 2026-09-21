@@ -458,7 +458,9 @@ mod tests {
             .arg(format!("--rpc-listen-port={rpc_port}"))
             .arg("--max-concurrent-downloads=1")
             .arg(format!("--split={split}"))
-            .args(min_split_size.into_iter().flat_map(|value| ["--min-split-size", value]))
+            .args(min_split_size.into_iter().flat_map(|value| {
+                ["--min-split-size", value]
+            }))
             .arg("--continue=true")
             .arg("--allow-overwrite=true")
             .arg("--auto-file-renaming=false")
@@ -498,7 +500,11 @@ mod tests {
         (aria2, client)
     }
 
-    fn wait_for_completion(client: &Aria2Client, gid: &str, timeout: std::time::Duration) -> Value {
+    fn wait_for_completion(
+        client: &Aria2Client,
+        gid: &str,
+        timeout: std::time::Duration,
+    ) -> Value {
         use std::{thread, time::Instant};
 
         let deadline = Instant::now() + timeout;
